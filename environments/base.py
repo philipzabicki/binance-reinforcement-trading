@@ -1,8 +1,10 @@
 # from random import normalvariate
+import logging
 from csv import writer
 from datetime import datetime as dt
 from math import copysign, floor, sqrt
 from random import randint
+from sys import stdout
 from time import time
 
 from gym import spaces, Env
@@ -36,145 +38,185 @@ class SpotBacktest(Env):
             visualize=False,
             render_range=120,
             verbose=True,
-            write_to_file=False,
+            report_to_file=False,
             *args,
             **kwargs,
     ):
+        # Configure logging for this instance
+        logging.basicConfig(
+            level=logging.WARNING,
+            format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+            handlers=[
+                logging.StreamHandler(stdout)
+            ]
+        )
+        self.logger = logging.getLogger(__name__)
+
         self.creation_t = time()
-        dates = to_datetime(df['Opened'])
-        self.df = ascontiguousarray(df.drop(columns=['Opened']).to_numpy(dtype=float32))
-        if start_date != "" and end_date != "":
-            start_date, end_date = to_datetime(start_date), to_datetime(end_date)
-            print(f'types of start_date {type(start_date)} end_date {type(end_date)}')
-            print(f'types dates {dates.dtype}')
-            self.start_index = searchsorted(dates, start_date, side="left")
-            self.end_index = searchsorted(dates, end_date, side="right") - 1
-        else:
-            self.start_index = 0
-            self.end_index = dates.shape[0] - 1
-        trade_range_size = self.df[self.start_index: self.end_index, :].shape[0]
-        if trade_range_size < max_steps:
-            raise ValueError("max_steps larger than rows in dataframe")
-
-        # Environment creation information
-        print(f"Environment ({self.__class__.__name__}) created.")
-        print(f" fee:{fee}, coin_step:{coin_step}")
-        print(
-            f" full_df_size: {self.df.shape[0]}, trade_range_size:{trade_range_size}, max_steps: {max_steps}({max_steps / self.df.shape[0] * 100:.2f}%)"
-        )
-        print(f" no_action_finish:{no_action_finish}")
-        print(f" df_sample(last row): {self.df[-1, exclude_cols_left:]}")
-        print(f" slippage statistics (avg, stddev): {slippage}")
-        print(f" init_balance:{init_balance}, position_ratio:{position_ratio}")
-        print(
-            f" save_ratio:{save_ratio}, stop_loss:{stop_loss} take_profit:{take_profit}"
-        )
-
-        if visualize:
-            self.dates = date2num(dates)
-            self.visualize = True
-            self.render_range = render_range
-            self.time_step = self.dates[1] - self.dates[0]
-            print(
-                f" Visualization enabled, time step: {self.time_step} (as factor of day)"
-            )
-        else:
-            self.visualize = False
-            print(f" Visualize is set to false or there was no dates df provided.")
-        if write_to_file:
-            self.write_to_file = True
-            self.filename = f'{REPORT_DIR}/envs/{self.__class__.__name__}_{str(dt.today()).replace(":", "-")[:-3]}.csv'
-            with open(self.filename, "w", newline="") as f:
-                header = [
-                    "trade_id",
-                    "trade_type",
-                    "position_size",
-                    "quantity",
-                    "balance",
-                    "save_balance",
-                    "profit",
-                    "fees",
-                    "sl_losses",
-                ]
-                writer(f).writerow(header)
-            self.to_file = []
-        else:
-            self.write_to_file = False
-        self.verbose = verbose
-        # This implementation uses only mean values provided by arg dict (slippage) #
-        # as factor for calculation of real buy and sell prices. #
-        # Generation of random numbers is too expensive computational wise. #
-        # self.slippage = slippage
-        if slippage is not None:
-            self.buy_factor = slippage["buy"][0] + slippage["buy"][1] * slipp_std
-            self.sell_factor = slippage["sell"][0] - slippage["sell"][1] * slipp_std
-            self.stop_loss_factor = (
-                    slippage["stop_loss"][0] - slippage["stop_loss"][1] * slipp_std
-            )
-            # TODO: handle take profit slippage data
-            self.take_profit_factor = 1.0
-        else:
-            (
-                self.buy_factor,
-                self.sell_factor,
-                self.stop_loss_factor,
-                self.take_profit_factor,
-            ) = (1.0, 1.0, 1.0, 1.0)
-        self.save_ratio = save_ratio
-        self.save_balance = 0.0
-        self.total_steps = len(self.df)
+        self.df_input = df
+        self.start_date = start_date
+        self.end_date = end_date
+        self.max_steps = max_steps
         self.exclude_cols_left = exclude_cols_left
         self.no_action_finish = no_action_finish
-        self.coin_step = coin_step
-        self.fee = fee
-        self.max_steps = max_steps
-        if steps_passive_penalty == 'auto':
-            self.steps_passive_penalty = int(sqrt(self.max_steps))
-            self.passive_penalty = True
-        elif steps_passive_penalty > 0:
-            self.steps_passive_penalty = steps_passive_penalty
-            self.passive_penalty = True
-        else:
-            self.steps_passive_penalty = steps_passive_penalty
-            self.passive_penalty = False
+        self.steps_passive_penalty = steps_passive_penalty
         self.init_balance = init_balance
         self.position_ratio = position_ratio
-        self.position_size = self.init_balance * self.position_ratio
-        self.balance = self.init_balance
+        self.save_ratio = save_ratio
         self.stop_loss = stop_loss
         self.take_profit = take_profit
-        # Discrete action space: 0 - hold, 1 - buy, 2 - sell
+        self.fee = fee
+        self.coin_step = coin_step
+        self.slippage = slippage
+        self.slipp_std = slipp_std
+        self.visualize = visualize
+        self.render_range = render_range
+        self.verbose = verbose
+        self.report_to_file = report_to_file
+        self.args = args
+        self.kwargs = kwargs
+
+        self._process_input_data()
+        self._initialize_parameters()
+        self._setup_visualization()
+        self._setup_reporting()
+
+    def _process_input_data(self):
+        self.dates = to_datetime(self.df_input['Opened'])
+        self.df = ascontiguousarray(
+            self.df_input.drop(columns=['Opened']).to_numpy(dtype=float32)
+        )
+        self.df_features = self.df_input.columns.tolist()
+
+        if self.start_date != "" and self.end_date != "":
+            start_date_dt = to_datetime(self.start_date)
+            end_date_dt = to_datetime(self.end_date)
+            self.logger.debug(f'Types of start_date {type(start_date_dt)} end_date {type(end_date_dt)}')
+            self.logger.debug(f'Dates dtype {self.dates.dtype}')
+            self.start_index = searchsorted(self.dates, start_date_dt, side="left")
+            self.end_index = searchsorted(self.dates, end_date_dt, side="right") - 1
+        else:
+            self.start_index = 0
+            self.end_index = self.dates.shape[0] - 1
+
+        trade_range_size = self.df[self.start_index:self.end_index, :].shape[0]
+        self.trade_range_size = trade_range_size
+        if trade_range_size < self.max_steps:
+            raise ValueError("max_steps is larger than the number of rows in the dataframe")
+
+    def _initialize_parameters(self):
+        if self.verbose:
+            self.logger.info(f"Environment ({self.__class__.__name__}) created.")
+            self.logger.info(f"Fee: {self.fee}, coin_step: {self.coin_step}")
+            self.logger.info(
+                f"full_df_size: {self.df.shape[0]}, trade_range_size: {self.trade_range_size}, "
+                f"max_steps: {self.max_steps} ({self.max_steps / self.df.shape[0] * 100:.2f}%)"
+            )
+            self.logger.info(f"no_action_finish: {self.no_action_finish}")
+            self.logger.info(f"Sample df row: {self.df[-1, self.exclude_cols_left:]}")
+            self.logger.info(f"Slippage statistics (avg, stddev): {self.slippage}")
+            self.logger.info(f"init_balance: {self.init_balance}, position_ratio: {self.position_ratio}")
+            self.logger.info(
+                f"save_ratio: {self.save_ratio}, stop_loss: {self.stop_loss}, take_profit: {self.take_profit}")
+
+        if self.slippage is not None:
+            self.buy_factor = self.slippage["buy"][0] + self.slippage["buy"][1] * self.slipp_std
+            self.sell_factor = self.slippage["sell"][0] - self.slippage["sell"][1] * self.slipp_std
+            self.stop_loss_factor = self.slippage["stop_loss"][0] - self.slippage["stop_loss"][1] * self.slipp_std
+            self.take_profit_factor = 1.0  # To be updated if needed
+        else:
+            self.buy_factor = 1.0
+            self.sell_factor = 1.0
+            self.stop_loss_factor = 1.0
+            self.take_profit_factor = 1.0
+
+        self.save_balance = 0.0
+        self.cum_pnl = 0.0
+        self.total_steps = len(self.df)
+        if self.steps_passive_penalty == 'auto':
+            self.steps_passive_penalty = int(sqrt(self.max_steps))
+            self.passive_penalty = True
+        elif self.steps_passive_penalty > 0:
+            self.passive_penalty = True
+        else:
+            self.passive_penalty = False
+
+        self.position_size = self.init_balance * self.position_ratio
+        self.balance = self.init_balance
+
+        # Define action and observation spaces
         self.action_space = spaces.Discrete(3)
-        # Observation space #
-        # none_df_obs_count are observations like current PnL, account balance, asset quantity etc. #
-        # obs_space_dims = len(self.df[0, exclude_cols_left:])
-        # obs_lower_bounds = array([-inf for _ in range(obs_space_dims)])
-        # obs_upper_bounds = array([inf for _ in range(obs_space_dims)])
-        # self.observation_space = spaces.Box(low=obs_lower_bounds, high=obs_upper_bounds)
+        # TODO: Define observation_space appropriately
+
+    def _setup_visualization(self):
+        if self.visualize:
+            self.dates = date2num(self.dates)
+            self.time_step = self.dates[1] - self.dates[0]
+            if self.verbose:
+                self.logger.info(
+                    f"Visualization enabled, time step: {self.time_step} (as a fraction of a day)"
+                )
+            # Initialize visualization (assuming TradingGraph is defined)
+            self.visualization = TradingGraph(self.render_range, self.time_step)
+        else:
+            self.visualize = False
+            if self.verbose:
+                self.logger.info("Visualization is disabled or no date data provided.")
+
+    def _setup_reporting(self):
+        if self.report_to_file:
+            self.filename = f'{REPORT_DIR}/envs/EP_{self.__class__.__name__}_{dt.now().strftime("%Y-%m-%d_%H-%M")}.csv'
+            self.report_file = open(self.filename, 'w', newline='')
+            self.report_writer = writer(self.report_file)
+            self.report_writer.writerow(self._get_report_header())
+            if self.verbose:
+                self.logger.info(f'Environment will report to file: {self.filename}')
+                self.logger.debug(f'File header: {self._get_report_header()}')
+
+    def _get_report_header(self):
+        return self.df_features + [
+            "trade_no",
+            "leverage",
+            "trade_side",
+            "position_size",
+            "quantity",
+            "balance",
+            "save_balance",
+            "profit_to_pos_ratio",
+            "cumulative_fee",
+        ]
+
+    def _get_report_row(self):
+        return [
+            self.dates.iloc[self.current_step],
+            *self.df[self.current_step, :],
+            self.episode_orders,
+            1,  # Constant leverage for spot env
+            self.last_order_type,
+            self.position_size,
+            self.qty,
+            self.balance,
+            self.save_balance,
+            self.absolute_profit / self.position_size,
+            self.cumulative_fees
+        ]
+
+    def _report_to_file(self):
+        self.report_writer.writerow(self._get_report_row())
 
     # Reset the state of the environment to an initial state
     def reset(self, **kwargs):
         self.creation_t = time()
         self.done = False
         self.reward = 0
+        self.cum_pnl = 0.0
         if self.visualize:
             self.visualization = TradingGraph(self.render_range, self.time_step)
-        if self.write_to_file:
-            self.filename = f'{REPORT_DIR}/envs/{self.__class__.__name__}_{str(dt.today()).replace(":", "-")[:-3]}.csv'
-            with open(self.filename, "w", newline="") as f:
-                header = [
-                    "trade_id",
-                    "trade_type",
-                    "position_size",
-                    "quantity",
-                    "balance",
-                    "save_balance",
-                    "profit",
-                    "fees",
-                    "sl_losses",
-                ]
-                writer(f).writerow(header)
-            self.to_file = []
+        if self.report_to_file:
+            self.filename = f'{REPORT_DIR}/envs/EP_{self.__class__.__name__}_{str(dt.today()).replace(":", "-")[:-3]}.csv'
+            self.report_file = open(self.filename, 'w', newline='')
+            self.report_writer = writer(self.report_file)
+            self.report_writer.writerow(self._get_report_header())
         self.last_order_type = ""
         self.info = {}
         self.PLs_and_ratios = []
@@ -248,8 +290,6 @@ class SpotBacktest(Env):
         self.position_size -= fee
         self.cumulative_fees += fee
         self.absolute_profit = -fee
-        if self.write_to_file:
-            self._write_to_file()
         # print(f'BOUGHT {self.qty} at {price}({adj_price})')
 
     def _sell(self, price, sl=False, tp=False):
@@ -313,12 +353,9 @@ class SpotBacktest(Env):
         self.passive_counter = 0
         self.position_closed = 1
         self.stop_loss_price = 0
-        if self.write_to_file:
-            self._write_to_file()
 
     def _next_observation(self):
         try:
-            self.current_step += 1
             return next(self.obs)
         except StopIteration:
             self.current_step -= 1
@@ -328,13 +365,13 @@ class SpotBacktest(Env):
     def step(self, action):
         self.last_order_type = ""
         self.absolute_profit = 0.0
-        self.passive_counter += 1
+        self.position_closed = 0
         if self.in_position:
             high, low, close = self.df[self.current_step, 1:4]
             # print(f'low: {low}, close: {close}, self.enter_price: {self.enter_price}')
             self.in_position_counter += 1
             self.pnl = (close / self.enter_price) - 1
-            if self.pnl >= 1:
+            if self.pnl >= 0:
                 self.profit_hold_counter += 1
             else:
                 self.loss_hold_counter += 1
@@ -348,19 +385,26 @@ class SpotBacktest(Env):
         elif action == 1:
             close = self.df[self.current_step, 3]
             self._buy(close)
+            self.pnl = (close / self.enter_price) - 1
         elif (not self.episode_orders) and (
                 (self.current_step - self.start_step) > self.no_action_finish
         ):
             self._finish_episode()
         else:
+            self.passive_counter += 1
             if self.init_balance < self.balance + self.save_balance:
                 self.with_gain_c += 1
         # Older version:
         # return self._next_observation(), self.reward, self.done, self.info
         # For now terminated == truncated (==self.done)
+        self.current_step += 1
+        if self.report_to_file:
+            self._report_to_file()
         return self._next_observation(), self.reward, self.done, False, self.info
 
     def _finish_episode(self):
+        if self.report_to_file:
+            self.report_file.close()
         # print('BacktestEnv._finish_episode()')
         if self.in_position:
             self._sell(self.enter_price)
@@ -495,10 +539,6 @@ class SpotBacktest(Env):
                 f" risk_free:{risk_free_return * 100:.2f}%, above_free:{above_free * 100:.2f}%,"
             )
             print(f" reward:{self.reward:.8f} exec_time:{exec_time:.2f}s")
-        if self.write_to_file:
-            with open(self.filename, "a", newline="") as f:
-                for row in self.to_file:
-                    writer(f).writerow(row)
         self.info = {
             "gain": gain,
             "PnL_means_ratio": PnL_means_ratio,
@@ -531,21 +571,8 @@ class SpotBacktest(Env):
             self.visualization.append(render_row, trade_info)
             self.visualization.render()
 
-    def _write_to_file(self):
-        _row = [
-            self.episode_orders,
-            self.last_order_type,
-            round(self.position_size, 2),
-            round(self.qty, 8),
-            round(self.balance, 2),
-            round(self.save_balance, 2),
-            round(self.absolute_profit, 2),
-            round(self.cumulative_fees, 2),
-            round(self.SL_losses, 2),
-        ]
-        self.to_file.append(_row)
 
-
+# TODO: Add report to file feature to Futures envs
 class FuturesBacktest(SpotBacktest):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -698,8 +725,6 @@ class FuturesBacktest(SpotBacktest):
                                  ) / (abs(self.qty) * self.POSITION_TIER[self.tier][1] - self.qty)
         # print(f'OPENED {side} price:{price} adj_price:{adj_price} qty:{self.qty} margin:{self.margin} fee:{fee}')
         # sleep(10)
-        if self.write_to_file:
-            self._write_to_file()
 
     def _close_position(self, price, liquidated=False, sl=False, tp=False):
         if sl:
@@ -776,8 +801,6 @@ class FuturesBacktest(SpotBacktest):
         self.pnl = 0
         # print(f'CLOSED {self.last_order_type} price:{price} adj_price:{adj_price} qty:{self.qty} percentage_profit:{percentage_profit} absolute_profit:{self.absolute_profit} margin:{self.margin} fee:{_fee}')
         # sleep(10)
-        if self.write_to_file:
-            self._write_to_file()
 
     # Execute one time step within the environment
     def step(self, action):

@@ -51,16 +51,16 @@ POSITION_TIER = {
 
 class SpotTaker:
     def __init__(
-        self,
-        base="BTC",
-        quote="USDT",
-        market="spot",
-        itv="1m",
-        settings=None,
-        API_KEY="",
-        SECRET_KEY="",
-        prev_size=100,
-        multi=25,
+            self,
+            base="BTC",
+            quote="USDT",
+            market="spot",
+            itv="1m",
+            settings=None,
+            API_KEY="",
+            SECRET_KEY="",
+            prev_size=100,
+            multi=25,
     ):
         self.start_t = time()
         if settings is None:
@@ -68,9 +68,9 @@ class SpotTaker:
         self.base, self.quote = base, quote
         self.symbol = base + quote
         if (
-            ("enter_at" not in settings.keys())
-            or ("close_at" not in settings.keys())
-            or ("stop_loss" not in settings.keys())
+                ("enter_at" not in settings.keys())
+                or ("close_at" not in settings.keys())
+                or ("stop_loss" not in settings.keys())
         ):
             raise AttributeError(
                 "You should provide at least 'enter_at', 'close_at' and 'stop_loss' inside settings dict."
@@ -323,16 +323,16 @@ class SpotTaker:
 ######################################################################################################################
 class FuturesTaker:
     def __init__(
-        self,
-        base="BTC",
-        quote="USDT",
-        market="um",
-        itv="1m",
-        settings=None,
-        API_KEY="",
-        SECRET_KEY="",
-        prev_size=100,
-        multi=1,
+            self,
+            base="BTC",
+            quote="USDT",
+            market="um",
+            itv="1m",
+            settings=None,
+            API_KEY="",
+            SECRET_KEY="",
+            prev_size=100,
+            multi=1,
     ):
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.setLevel(logging.DEBUG)
@@ -490,9 +490,9 @@ class FuturesTaker:
         # Stop Loss filling handle
         if self.SL_order is not None:
             if (
-                (float(data_k["l"]) <= self.stoploss_price) and self.in_long_position
+                    (float(data_k["l"]) <= self.stoploss_price) and self.in_long_position
             ) or (
-                (float(data_k["h"]) >= self.stoploss_price) and self.in_short_position
+                    (float(data_k["h"]) >= self.stoploss_price) and self.in_short_position
             ):
                 order = self.client.query_order(
                     symbol=self.symbol, orderId=self.SL_order["orderId"]
@@ -509,9 +509,9 @@ class FuturesTaker:
                 self.in_long_position, self.in_short_position = False, False
         if self.TP_order is not None:
             if (
-                (float(data_k["h"]) >= self.takeprofit_price) and self.in_long_position
+                    (float(data_k["h"]) >= self.takeprofit_price) and self.in_long_position
             ) or (
-                (float(data_k["l"]) <= self.takeprofit_price) and self.in_short_position
+                    (float(data_k["l"]) <= self.takeprofit_price) and self.in_short_position
             ):
                 order = self.client.query_order(
                     symbol=self.symbol, orderId=self.TP_order["orderId"]

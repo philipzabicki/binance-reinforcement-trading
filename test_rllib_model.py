@@ -1,11 +1,13 @@
 from datetime import datetime as dt
+
+import ray
 from numpy import inf
-from ray.rllib.algorithms import ppo, dqn
+from ray.rllib.algorithms import ppo
 from ray.rllib.env import EnvContext
-from definitions import TENSORBOARD_DIR, MODELS_DIR
+
+from definitions import MODELS_DIR
 from environments.spot_rl_env import SpotTakerRL
 from utils.data_collector import by_BinanceVision
-import ray
 
 TICKER = "BTCUSDT"
 ITV = "1h"
@@ -43,11 +45,14 @@ if __name__ == "__main__":
     )
     print(f"df used: {df}")
 
+
     def env_creator(env_config: EnvContext):
         return SpotTakerRL(df=df, **ENV_KWARGS)
 
+
     # Rejestracja niestandardowego środowiska
     from ray.tune.registry import register_env
+
     register_env("spot_taker_rl", env_creator)
 
     # Konfiguracja trenera PPO

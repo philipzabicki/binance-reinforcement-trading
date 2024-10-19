@@ -1,4 +1,4 @@
-from numpy import inf, random
+from numpy import inf
 
 from environments.spot_rl_env import SpotTakerRL
 from utils.data_collector import by_BinanceVision
@@ -14,7 +14,7 @@ DF_START_DATE = "2023-09-04"
 DF_END_DATE = "2024-06-01"
 ENV_KWARGS = {
     "lookback_size": 10,
-    "max_steps": 2_160,  # 90 days in 1h intervals
+    "max_steps": 8_760,  # 90 days in 1h intervals
     # 'start_date': TRADE_START_DATE,
     # 'end_date': TRADE_END_DATE,
     "init_balance": 1_000,
@@ -27,8 +27,8 @@ ENV_KWARGS = {
     "render_range": 60,
     # 'slippage': get_slippage_stats('spot', 'BTCFDUSD', '1m', 'market'),
     "verbose": True,
+    "report_to_file": True
 }
-
 
 if __name__ == "__main__":
     df = by_BinanceVision(
@@ -49,7 +49,7 @@ if __name__ == "__main__":
     while not terminated:
         action = test_env.action_space.sample()
         # action = random.choice([0, 1, 2], p=[0.7, 0.25, 0.05])
-        print(f"ACTION {action}")
+        # print(f"ACTION {action}")
         observation, reward, terminated, info = test_env.step(action)
         # test_env.render()
-        print(observation, reward, terminated, info)
+        # print(observation, reward, terminated, info)

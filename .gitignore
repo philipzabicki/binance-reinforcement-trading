@@ -1,7 +1,7 @@
 data/binance_data_futures
 data/binance_data_spot
 data/binance_vision
-reports/*
+reports/envs/*
 !reports/.gitkeep
 **/__pycache__
 *.png

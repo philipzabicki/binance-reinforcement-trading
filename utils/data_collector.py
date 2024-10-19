@@ -67,7 +67,7 @@ def _read_partial_df(_path):
 
 
 def _collect_to_date(
-    url, output_folder, start_date=date(year=2017, month=1, day=1), delta_itv="months"
+        url, output_folder, start_date=date(year=2017, month=1, day=1), delta_itv="months"
 ):
     if delta_itv == "months":
         delta = relativedelta(months=1)
@@ -106,14 +106,14 @@ def _collect_to_date(
 
 
 def by_BinanceVision(
-    ticker="BTCBUSD",
-    interval="1m",
-    market_type="um",
-    data_type="klines",
-    start_date="",
-    end_date="",
-    split=False,
-    delay=LAST_DATA_POINT_DELAY,
+        ticker="BTCBUSD",
+        interval="1m",
+        market_type="um",
+        data_type="klines",
+        start_date="",
+        end_date="",
+        split=False,
+        delay=LAST_DATA_POINT_DELAY,
 ):
     if end_date == "":
         end_date = date.today()
@@ -125,13 +125,13 @@ def by_BinanceVision(
     if market_type == "um" or market_type == "cm":
         url = f"https://data.binance.vision/data/futures/{market_type}/monthly/{data_type}/{ticker}/{interval}/{ticker}-{interval}-"
         output_folder = (
-            DATA_DIR
-            + f"binance_vision/futures_{market_type}/{data_type}/{ticker}{interval}"
+                DATA_DIR
+                + f"binance_vision/futures_{market_type}/{data_type}/{ticker}{interval}"
         )
     elif market_type == "spot":
         url = f"https://data.binance.vision/data/{market_type}/monthly/{data_type}/{ticker}/{interval}/{ticker}-{interval}-"
         output_folder = (
-            DATA_DIR + f"binance_vision/{market_type}/{data_type}/{ticker}{interval}"
+                DATA_DIR + f"binance_vision/{market_type}/{data_type}/{ticker}{interval}"
         )
     else:
         raise ValueError("type argument must be one of { um, cm, spot }")
@@ -141,9 +141,9 @@ def by_BinanceVision(
     if path.isfile(output_folder + ".csv"):
         df = pd.read_csv(output_folder + ".csv")
         df["Opened"] = pd.to_datetime(df["Opened"])
-        last_timestamp = (df.iloc[-1]["Opened"]).value // 10**9
+        last_timestamp = (df.iloc[-1]["Opened"]).value // 10 ** 9
         print(f"time() - last_timestamp {time() - last_timestamp}")
-        if ((time() - last_timestamp) > delay) and end_date!=date.today():
+        if ((time() - last_timestamp) > delay) and end_date != date.today():
             _start_date = pd.to_datetime(last_timestamp, unit="s").date()
             # print(f'start_date {start_date}')
             _end_date = date.today()
@@ -174,7 +174,7 @@ def by_BinanceVision(
         # print(fixed_df.loc[fixed_df['Opened'] >= start_date])
         fixed_df = fixed_df.loc[
             (fixed_df["Opened"] >= start_date) & (fixed_df["Opened"] <= end_date)
-        ]
+            ]
     if split:
         return fixed_df.iloc[:, 0], fixed_df.iloc[:, 1:]
     else:
@@ -182,12 +182,12 @@ def by_BinanceVision(
 
 
 def by_DataClient(
-    ticker="BTCUSDT",
-    interval="1m",
-    futures=True,
-    statements=True,
-    split=False,
-    delay=LAST_DATA_POINT_DELAY,
+        ticker="BTCUSDT",
+        interval="1m",
+        futures=True,
+        statements=True,
+        split=False,
+        delay=LAST_DATA_POINT_DELAY,
 ):
     directory = "binance_data_futures/" if futures else "binance_data_spot/"
     file = DATA_DIR + directory + interval + "_data/" + ticker + "/" + ticker + ".csv"
@@ -195,7 +195,7 @@ def by_DataClient(
     if path.isfile(file):
         df = pd.read_csv(file, header=0)
         df["Opened"] = pd.to_datetime(df["Opened"])
-        last_timestamp = (df.iloc[-1]["Opened"]).value // 10**9
+        last_timestamp = (df.iloc[-1]["Opened"]).value // 10 ** 9
         if time() - last_timestamp > delay:
             print(f"\n updating data... ({futures} {ticker} {interval} )")
             DataClient(futures=futures).kline_data(
