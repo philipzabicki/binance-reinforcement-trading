@@ -82,6 +82,11 @@ class SpotBacktest(Env):
         self._setup_reporting()
 
     def _process_input_data(self):
+        if self.df_input.isnull().values.any():
+            nan_counts = self.df_input.isnull().sum()
+            nan_columns = nan_counts[nan_counts > 0].index.tolist()
+            raise ValueError(f"Input dataframe contains NaN values in columns: {nan_columns}")
+
         self.dates = to_datetime(self.df_input['Opened'])
         self.df = ascontiguousarray(
             self.df_input.drop(columns=['Opened']).to_numpy(dtype=float32)
@@ -149,8 +154,8 @@ class SpotBacktest(Env):
         # TODO: Define observation_space appropriately
 
     def _setup_visualization(self):
+        self.dates = date2num(self.dates)
         if self.visualize:
-            self.dates = date2num(self.dates)
             self.time_step = self.dates[1] - self.dates[0]
             if self.verbose:
                 self.logger.info(
@@ -188,7 +193,7 @@ class SpotBacktest(Env):
 
     def _get_report_row(self):
         return [
-            self.dates.iloc[self.current_step],
+            self.dates[self.current_step],
             *self.df[self.current_step, :],
             self.episode_orders,
             1,  # Constant leverage for spot env
@@ -254,14 +259,14 @@ class SpotBacktest(Env):
         # return self.df[self.current_step, self.exclude_cols_left:]
         return next(self.obs)
 
-    # def _next_observation(self):
-    #   self.current_step += 1
-    #   if self.current_step==self.end_step-1:
-    #     self._finish_episode()
-    #   return next(self.obs)
-    #
-    # def _random_factor(self, price, trade_type):
-    #   return round(price*float(normalvariate(self.slippage[trade_type][0], self.slippage[trade_type][1])), 2)
+    def _get_full_balance(self):
+        if self.in_position:
+            _pnl = self.df[self.current_step, 3] / self.enter_price - 1
+            return self.balance + (
+                    self.position_size + (self.position_size * _pnl)
+            ) + self.save_balance
+        else:
+            return self.balance + self.save_balance
 
     def _buy(self, price):
         if self.stop_loss is not None:
@@ -307,7 +312,7 @@ class SpotBacktest(Env):
             self.take_profits_c += 1
             adj_price = price * self.take_profit_factor
             # TODO: add new order type for visualizations
-            self.last_order_type = "close_long"
+            self.last_order_type = "take_profit_long"
         else:
             # price = self._random_factor(price, 'market_sell')
             adj_price = price * self.sell_factor
@@ -366,6 +371,7 @@ class SpotBacktest(Env):
         self.last_order_type = ""
         self.absolute_profit = 0.0
         self.position_closed = 0
+        self.sl_trigger, self.tp_trigger = 0, 0
         if self.in_position:
             high, low, close = self.df[self.current_step, 1:4]
             # print(f'low: {low}, close: {close}, self.enter_price: {self.enter_price}')
@@ -377,8 +383,10 @@ class SpotBacktest(Env):
                 self.loss_hold_counter += 1
             # Handling stop losses and take profits
             if (self.stop_loss is not None) and (low <= self.stop_loss_price):
+                self.sl_trigger = 1
                 self._sell(self.stop_loss_price, sl=True)
             elif (self.take_profit is not None) and (high >= self.take_profit_price):
+                self.tp_trigger = 1
                 self._sell(self.take_profit_price, tp=True)
             elif action == 2 and self.qty > 0:
                 self._sell(close)
@@ -501,44 +509,13 @@ class SpotBacktest(Env):
             self.verbose = True
         if self.verbose:
             print(
-                f"Episode finished: gain:${gain:.2f}({total_return * 100:.2f}%), gain/step:${gain / (self.end_step - self.start_step):.5f}, ",
-                end="",
+                f"Episode finished: gain:${gain:.2f}({total_return * 100:.2f}%), gain/step:${gain / (self.end_step - self.start_step):.5f}, cumulative_fees:${self.cumulative_fees:.2f}, SL_losses:${self.SL_losses:.2f} take_profits:{self.take_profits_c}\n"
+                f" stop_loss:{self.stop_loss}, take_profit:{self.take_profit}, save_ratio:{self.save_ratio}, saved_balance:${self.save_balance:.2f}\n"
+                f" trades:{self.episode_orders:_}, trades_with(profit/loss):{self.good_trades_count - 1:_}/{self.bad_trades_count - 1:_}, trades_avg(profit/loss):{profits_mean * 100:.2f}%/{losses_mean * 100:.2f}%, max(profit/drawdown):{self.max_profit * 100:.2f}%/{self.max_drawdown * 100:.2f}%\n"
+                f" PnL_trades_ratio:{PnL_trades_ratio:.3f}, PnL_means_ratio:{PnL_means_ratio:.3f}, hold_ratio:{hold_ratio:.3f}, PNL_mean:{mean_pnl * 100:.2f}%, geo_avg_return:{((self.balance / self.init_balance) ** (1 / (self.end_step - self.start_step)) - 1) * 100:.7f}%\n"
+                f" slope_indicator:{slope_indicator:.4f}, in_gain_indicator:{in_gain_indicator:.3f}, sharpe_ratio:{sharpe_ratio:.2f}, sortino_ratio:{sortino_ratio:.2f}, risk_free:{risk_free_return * 100:.2f}%, above_free:{above_free * 100:.2f}%\n"
+                f" reward:{self.reward:.8f} exec_time:{exec_time:.2f}s"
             )
-            print(
-                f"cumulative_fees:${self.cumulative_fees:.2f}, SL_losses:${self.SL_losses:.2f} take_profits:{self.take_profits_c}"
-            )
-            print(
-                f" stop_loss:{self.stop_loss:.3f}, take_profit:{self.take_profit:.3f}, save_ratio:{self.save_ratio}, saved_balance:${self.save_balance:.2f}"
-            )
-            print(
-                f" trades:{self.episode_orders:_}, trades_with(profit/loss):{self.good_trades_count - 1:_}/{self.bad_trades_count - 1:_}, ",
-                end="",
-            )
-            print(
-                f"trades_avg(profit/loss):{profits_mean * 100:.2f}%/{losses_mean * 100:.2f}%, ",
-                end="",
-            )
-            print(
-                f"max(profit/drawdown):{self.max_profit * 100:.2f}%/{self.max_drawdown * 100:.2f}%,"
-            )
-            print(
-                f" PnL_trades_ratio:{PnL_trades_ratio:.3f}, PnL_means_ratio:{PnL_means_ratio:.3f}, ",
-                end="",
-            )
-            print(
-                f"hold_ratio:{hold_ratio:.3f}, PNL_mean:{mean_pnl * 100:.2f}%, ", end=""
-            )
-            print(
-                f"geo_avg_return:{((self.balance / self.init_balance) ** (1 / (self.end_step - self.start_step)) - 1) * 100:.7f}%"
-            )
-            print(
-                f" slope_indicator:{slope_indicator:.4f}, in_gain_indicator:{in_gain_indicator:.3f}, sharpe_ratio:{sharpe_ratio:.2f}, sortino_ratio:{sortino_ratio:.2f},",
-                end="",
-            )
-            print(
-                f" risk_free:{risk_free_return * 100:.2f}%, above_free:{above_free * 100:.2f}%,"
-            )
-            print(f" reward:{self.reward:.8f} exec_time:{exec_time:.2f}s")
         self.info = {
             "gain": gain,
             "PnL_means_ratio": PnL_means_ratio,
@@ -551,20 +528,13 @@ class SpotBacktest(Env):
 
     def render(self, indicator_or_reward=None, visualize=False, *args, **kwargs):
         if visualize or self.visualize:
-            if self.in_position:
-                _pnl = self.df[self.current_step, 3] / self.enter_price - 1
-                _balance = self.balance + (
-                        self.position_size + (self.position_size * _pnl)
-                )
-            else:
-                _balance = self.balance
             if indicator_or_reward is None:
                 indicator_or_reward = self.df[self.current_step, -1]
             render_row = [
                 self.dates[self.current_step],
                 *self.df[self.current_step, 0:4],
                 indicator_or_reward,
-                _balance,
+                self._get_full_balance(),
             ]
             trade_info = [self.last_order_type, str(round(self.absolute_profit, 2))]
             #   print(f'trade_info {trade_info}')

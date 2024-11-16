@@ -9,10 +9,20 @@ import requests
 from binance_data import DataClient
 from dateutil.relativedelta import relativedelta
 
-from definitions import DATA_DIR
+from definitions import DATA_DIR, MODELING_DATASET_DIR
 
 LAST_DATA_POINT_DELAY = 86_400  # 1 day in seconds
 ITV_ALIASES = {"1m": "1min", "3m": "3min", "5m": "5min", "15m": "15min", "30m": "30min"}
+
+
+def get_precalculated_dataset_by_filename(dataset_filename, train_test_split_date):
+    df = pd.read_csv(f'{MODELING_DATASET_DIR}/{dataset_filename}')
+    print(df)
+    df['Opened'] = pd.to_datetime(df['Opened'])
+    if train_test_split_date is not None:
+        return df[(df['Opened'] <= train_test_split_date)], df[(df['Opened'] > train_test_split_date)]
+    else:
+        return df
 
 
 def _fix_and_fill_df(df, itv):
@@ -126,12 +136,12 @@ def by_BinanceVision(
         url = f"https://data.binance.vision/data/futures/{market_type}/monthly/{data_type}/{ticker}/{interval}/{ticker}-{interval}-"
         output_folder = (
                 DATA_DIR
-                + f"binance_vision/futures_{market_type}/{data_type}/{ticker}{interval}"
+                + f"/binance_vision/futures_{market_type}/{data_type}/{ticker}{interval}"
         )
     elif market_type == "spot":
         url = f"https://data.binance.vision/data/{market_type}/monthly/{data_type}/{ticker}/{interval}/{ticker}-{interval}-"
         output_folder = (
-                DATA_DIR + f"binance_vision/{market_type}/{data_type}/{ticker}{interval}"
+                DATA_DIR + f"/binance_vision/{market_type}/{data_type}/{ticker}{interval}"
         )
     else:
         raise ValueError("type argument must be one of { um, cm, spot }")
@@ -142,7 +152,7 @@ def by_BinanceVision(
         df = pd.read_csv(output_folder + ".csv")
         df["Opened"] = pd.to_datetime(df["Opened"])
         last_timestamp = (df.iloc[-1]["Opened"]).value // 10 ** 9
-        print(f"time() - last_timestamp {time() - last_timestamp}")
+        print(f"Last data point age in seconds:  {time() - last_timestamp:.3f}")
         if ((time() - last_timestamp) > delay) and end_date != date.today():
             _start_date = pd.to_datetime(last_timestamp, unit="s").date()
             # print(f'start_date {start_date}')

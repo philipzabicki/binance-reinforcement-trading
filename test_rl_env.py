@@ -4,7 +4,7 @@ from environments.spot_rl_env import SpotTakerRL
 from utils.data_collector import by_BinanceVision
 
 TICKER = "BTCUSDT"
-ITV = "1h"
+ITV = "5m"
 MARKET_TYPE = "spot"
 DATA_TYPE = "klines"
 TRADE_START_DATE = "2023-12-04"
@@ -14,7 +14,7 @@ DF_START_DATE = "2023-09-04"
 DF_END_DATE = "2024-06-01"
 ENV_KWARGS = {
     "lookback_size": 10,
-    "max_steps": 8_760,  # 90 days in 1h intervals
+    "max_steps": 8_640,  # 30 days in 5m intervals
     # 'start_date': TRADE_START_DATE,
     # 'end_date': TRADE_END_DATE,
     "init_balance": 1_000,
