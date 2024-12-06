@@ -11,7 +11,7 @@ from utils.feature_functions import keltner_channels_custom_mas
 
 if __name__ == "__main__":
     TICKER = "BTCUSDT"
-    ITV = "5m"
+    ITV = "1d"
     MARKET_TYPE = "spot"
     DATA_TYPE = "klines"
 
@@ -20,8 +20,8 @@ if __name__ == "__main__":
         interval=ITV,
         market_type=MARKET_TYPE,
         data_type=DATA_TYPE,
-        start_date='2023-01-01',
-        end_date='2024-01-01',
+        # start_date='2023-01-01',
+        # end_date='2024-01-01',
         split=False,
         delay=0,
     )

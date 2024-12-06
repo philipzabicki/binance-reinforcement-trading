@@ -4,7 +4,7 @@ import torch as th
 import torch.nn as nn
 from gym import Space
 from numpy import inf
-from stable_baselines3 import PPO
+from stable_baselines3 import DQN  # Zmieniono z PPO na DQN
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from stable_baselines3.common.vec_env import SubprocVecEnv
 from torch import cuda
@@ -24,15 +24,15 @@ class CustomCNNBiLSTMAttentionFeatureExtractor(BaseFeaturesExtractor):
             nn.Conv1d(in_channels=n_features, out_channels=384, kernel_size=2, padding='same'),
             nn.BatchNorm1d(384),
             nn.ReLU(),
-            nn.Dropout(p=0.25),
+            # nn.Dropout(p=0.25),
             nn.Conv1d(384, 256, kernel_size=4, padding='same'),
             nn.BatchNorm1d(256),
             nn.ReLU(),
-            nn.Dropout(p=0.2),
+            # nn.Dropout(p=0.2),
             nn.Conv1d(256, 128, kernel_size=8, padding='same'),
             nn.BatchNorm1d(128),
             nn.ReLU(),
-            nn.Dropout(p=0.15)
+            nn.Dropout(p=0.2)
         )
         self.lstm = nn.LSTM(input_size=128, hidden_size=128, num_layers=2, batch_first=True, bidirectional=True)
         self.attention = nn.Linear(128 * 2, 1)  # *2 ze względu na dwukierunkowe LSTM
@@ -47,9 +47,9 @@ class CustomCNNBiLSTMAttentionFeatureExtractor(BaseFeaturesExtractor):
         # print(f'x after 2nd permute: {x.shape}')
         lstm_out, _ = self.lstm(x)  # Teraz LSTM otrzymuje (B, 72, 128)
         # print(f'x lstm output: {lstm_out.shape}')
-        attention_weights = F.softmax(self.attention(lstm_out), dim=1)  # (B, 140, 1)
+        attention_weights = F.softmax(self.attention(lstm_out), dim=1)  # (B, 72, 1)
         # print(f'attention_weights: {attention_weights.shape}')
-        lstm_out = lstm_out * attention_weights  # (B, 140, 256)
+        lstm_out = lstm_out * attention_weights  # (B, 72, 256)
         # print(f'lstm_out * attention_weights {lstm_out.shape}')
         lstm_out = lstm_out.sum(dim=1)  # (B, 256)
         # print(f'lstm_out.sum(dim=1) {lstm_out.shape}')
@@ -59,12 +59,11 @@ class CustomCNNBiLSTMAttentionFeatureExtractor(BaseFeaturesExtractor):
 def make_env(df, **env_kwargs):
     def _init():
         return DiscreteSpotTakerRL(df=df, **env_kwargs)
-
     return _init
 
 
 MODELING_DATASET_FILENAME = 'BTCUSDT5m_spot_modeling_v2.csv'
-DATASET_SPLIT_DATE = "2024-06-01"
+DATASET_SPLIT_DATE = "2024-03-01"
 NUM_ENVS = 6
 ENV_KWARGS = {
     "lookback_size": 72,  # 6h obs history (5m itv)
@@ -73,7 +72,8 @@ ENV_KWARGS = {
     "init_balance": 1_000,
     "no_action_finish": inf,
     'steps_passive_penalty': 'auto',
-    "fee": 0.00075,
+    # "fee": 0.00075,
+    "fee": 0.0,
     "coin_step": 0.00001,
     "visualize": False,
     "render_range": 80,
@@ -81,14 +81,22 @@ ENV_KWARGS = {
     "report_to_file": False,
 }
 MODEL_PARAMETERS = {
-    'batch_size': 336,  # 168, 252, 336, 504
-    'n_steps': 1_008,
-    'total_timesteps': 500_000,
+    'batch_size': 252,  # 168, 252, 336, 504
+    'buffer_size': 100_000,  # Rozmiar bufora doświadczeń
+    'learning_starts': 1_000,  # Liczba kroków przed rozpoczęciem uczenia
+    'train_freq': (1, 'step'),  # Częstotliwość trenowania
+    'target_update_interval': 1_000,  # Częstotliwość aktualizacji docelowej sieci
+    'learning_rate': 1e-4,
+    'gamma': 0.99,
+    'exploration_initial_eps': 1.0,
+    'exploration_final_eps': 0.05,
+    'exploration_fraction': 0.1,
+    'total_timesteps': 5_000_000,
 }
 
 if __name__ == "__main__":
     print(f'CUDA available: {cuda.is_available()}')
-    experiment_name = f"{MODELING_DATASET_FILENAME}lb{ENV_KWARGS['lookback_size']}_ms{ENV_KWARGS['max_steps']}_tt{MODEL_PARAMETERS['total_timesteps']}_PPO"
+    experiment_name = f"{MODELING_DATASET_FILENAME}lb{ENV_KWARGS['lookback_size']}_ms{ENV_KWARGS['max_steps']}_tt{MODEL_PARAMETERS['total_timesteps']}_DQN"
     tensorboard_log_dir = f"{TENSORBOARD_DIR}/{experiment_name}"
 
     df_train, _ = get_precalculated_dataset_by_filename(MODELING_DATASET_FILENAME, DATASET_SPLIT_DATE)
@@ -96,34 +104,32 @@ if __name__ == "__main__":
     print(f'Loaded train dataset shape: {df_train.shape}')
 
     df_train = add_scaled_candle_patterns_indicators(df_train)
-    df_train = add_scaled_ultosc_rsi_mfi_up_to_n(df_train, 100, 5)
+    df_train = add_scaled_ultosc_rsi_mfi_up_to_n(df_train, 35, 1)
     print(f'Post feature imputation train dataset shape: {df_train.shape}')
 
     envs = SubprocVecEnv([make_env(df_train, **ENV_KWARGS) for _ in range(NUM_ENVS)])
     policy_kwargs = dict(
         features_extractor_class=CustomCNNBiLSTMAttentionFeatureExtractor,
         features_extractor_kwargs=dict(features_dim=256),
-        net_arch=dict(pi=[256, 128, 64], vf=[256, 128, 64]),
+        net_arch=[256, 128, 64],  # DQN używa jednowarstwowej architektury
         activation_fn=nn.ReLU,
-        share_features_extractor=True
     )
-    model = PPO(
-        "CnnPolicy",
+    model = DQN(
+        "CnnPolicy",  # Polityka CNN jest kompatybilna z DQN
         envs,
         policy_kwargs=policy_kwargs,
-        n_steps=MODEL_PARAMETERS['n_steps'] // NUM_ENVS,
+        buffer_size=MODEL_PARAMETERS['buffer_size'],
+        learning_starts=MODEL_PARAMETERS['learning_starts'],
+        train_freq=MODEL_PARAMETERS['train_freq'],
+        target_update_interval=MODEL_PARAMETERS['target_update_interval'],
         batch_size=MODEL_PARAMETERS['batch_size'],
-        # n_epochs=3,
-        learning_rate=1e-4,
-        # clip_range=0.1,
-        # ent_coef=0.01,
-        # vf_coef=0.9,
-        # gamma=0.99,
-        # max_grad_norm=1.0,
-        # target_kl=1.0,
+        learning_rate=MODEL_PARAMETERS['learning_rate'],
+        gamma=MODEL_PARAMETERS['gamma'],
+        exploration_initial_eps=MODEL_PARAMETERS['exploration_initial_eps'],
+        exploration_final_eps=MODEL_PARAMETERS['exploration_final_eps'],
+        exploration_fraction=MODEL_PARAMETERS['exploration_fraction'],
         tensorboard_log=tensorboard_log_dir,
         verbose=1,
-        stats_window_size=5,
         device="cuda",
     )
 
@@ -142,28 +148,7 @@ if __name__ == "__main__":
     #         Łączna liczba kroków czasowych wykonanych podczas treningu.
     #
     # train/
-    #     approx_kl
-    #         Przybliżona różnica Kullbacka-Leiblera między starą a nową polityką, używana do monitorowania zmian w polityce.
-    #     clip_fraction
-    #         Frakcja próbek, które przekroczyły zakres klipowania, co wskazuje na to, jak często klipowanie jest aktywne.
-    #     clip_range
-    #         Zakres klipowania dla funkcji polityki, który ogranicza zmiany w polityce, aby zapobiec zbyt dużym aktualizacjom.
-    #     entropy_loss
-    #         Strata entropii, miara niepewności polityki, która promuje eksplorację przez agentów.
-    #     explained_variance
-    #         Wskaźnik wyjaśnionej wariancji wartości, pokazujący, jak dobrze przewidywane wartości odzwierciedlają rzeczywiste nagrody.
-    #     learning_rate
-    #         Tempo uczenia, określające jak duże kroki są podejmowane podczas aktualizacji wag modelu.
-    #     loss
-    #         Całkowita strata modelu, będąca sumą wszystkich komponentów strat używanych do optymalizacji modelu.
-    #     n_updates
-    #         Liczba aktualizacji wykonanych przez algorytm treningowy.
-    #     policy_gradient_loss
-    #         Strata gradientu polityki, część straty związana bezpośrednio z aktualizacją polityki.
-    #     std
-    #         Odchylenie standardowe, często związane z polityką stochastyczną, określające stopień eksploracji.
-    #     value_loss
-    #         Strata funkcji wartości, mierząca błąd w przewidywaniu wartości stanu przez model.
+    #     ... (pozostałe metryki pozostają bez zmian)
     # -----------------------------------------
 
     _date = str(dt.today()).replace(":", "-")[:-7]
@@ -171,12 +156,12 @@ if __name__ == "__main__":
     print(f'Saving model to: {model_full_path}')
     model.save(model_full_path)
     del model
-    model = PPO.load(model_full_path)
+    model = DQN.load(model_full_path, env=envs)  # Ładowanie modelu DQN
 
     _, df_test = get_precalculated_dataset_by_filename(MODELING_DATASET_FILENAME, DATASET_SPLIT_DATE)
     print(f'Loaded test dataset shape: {df_test.shape}')
     df_test = add_scaled_candle_patterns_indicators(df_test)
-    df_test = add_scaled_ultosc_rsi_mfi_up_to_n(df_test, 100, 5)
+    df_test = add_scaled_ultosc_rsi_mfi_up_to_n(df_test, 35, 1)
 
     ENV_KWARGS['report_to_file'] = True
     val_env = DiscreteSpotTakerRL(df=df_test, **ENV_KWARGS)
