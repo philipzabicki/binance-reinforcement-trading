@@ -53,7 +53,8 @@ class DiscreteSpotTakerRL(SpotBacktest):
             self.qty,
             (_full_bal / self.init_balance) - 1,
             self.in_position,
-            self.in_position_counter / self.max_steps,
+            self.in_position_counter / self.max_steps if self.max_steps > 0 else self.in_position_counter /
+                                                                                 self.df.shape[0],
             min(self.passive_counter / self.steps_passive_penalty, 1),
             self.pnl
         ]
@@ -70,7 +71,8 @@ class DiscreteSpotTakerRL(SpotBacktest):
             self.qty,
             (_full_bal / self.init_balance) - 1,
             self.in_position,
-            self.in_position_counter / self.max_steps,
+            self.in_position_counter / self.max_steps if self.max_steps > 0 else self.in_position_counter /
+                                                                                 self.df.shape[0],
             min(self.passive_counter / self.steps_passive_penalty, 1),
             self.pnl
         ]

@@ -59,12 +59,13 @@ class CustomCNNBiLSTMAttentionFeatureExtractor(BaseFeaturesExtractor):
 def make_env(df, **env_kwargs):
     def _init():
         return DiscreteSpotTakerRL(df=df, **env_kwargs)
+
     return _init
 
 
 MODELING_DATASET_FILENAME = 'BTCUSDT5m_spot_modeling_v2.csv'
 DATASET_SPLIT_DATE = "2024-03-01"
-NUM_ENVS = 6
+NUM_ENVS = 12
 ENV_KWARGS = {
     "lookback_size": 72,  # 6h obs history (5m itv)
     "max_steps": 8_640,  # 30D of trading (5m itv)
@@ -81,7 +82,7 @@ ENV_KWARGS = {
     "report_to_file": False,
 }
 MODEL_PARAMETERS = {
-    'batch_size': 252,  # 168, 252, 336, 504
+    'batch_size': 168,  # 168, 252, 336, 504
     'buffer_size': 100_000,  # Rozmiar bufora doświadczeń
     'learning_starts': 1_000,  # Liczba kroków przed rozpoczęciem uczenia
     'train_freq': (1, 'step'),  # Częstotliwość trenowania
@@ -118,16 +119,17 @@ if __name__ == "__main__":
         "CnnPolicy",  # Polityka CNN jest kompatybilna z DQN
         envs,
         policy_kwargs=policy_kwargs,
-        buffer_size=MODEL_PARAMETERS['buffer_size'],
-        learning_starts=MODEL_PARAMETERS['learning_starts'],
-        train_freq=MODEL_PARAMETERS['train_freq'],
-        target_update_interval=MODEL_PARAMETERS['target_update_interval'],
-        batch_size=MODEL_PARAMETERS['batch_size'],
-        learning_rate=MODEL_PARAMETERS['learning_rate'],
-        gamma=MODEL_PARAMETERS['gamma'],
-        exploration_initial_eps=MODEL_PARAMETERS['exploration_initial_eps'],
-        exploration_final_eps=MODEL_PARAMETERS['exploration_final_eps'],
-        exploration_fraction=MODEL_PARAMETERS['exploration_fraction'],
+        buffer_size=1000,
+        # buffer_size=MODEL_PARAMETERS['buffer_size'],
+        # learning_starts=MODEL_PARAMETERS['learning_starts'],
+        # train_freq=MODEL_PARAMETERS['train_freq'],
+        # target_update_interval=MODEL_PARAMETERS['target_update_interval'],
+        # batch_size=MODEL_PARAMETERS['batch_size'],
+        # learning_rate=MODEL_PARAMETERS['learning_rate'],
+        # gamma=MODEL_PARAMETERS['gamma'],
+        # exploration_initial_eps=MODEL_PARAMETERS['exploration_initial_eps'],
+        # exploration_final_eps=MODEL_PARAMETERS['exploration_final_eps'],
+        # exploration_fraction=MODEL_PARAMETERS['exploration_fraction'],
         tensorboard_log=tensorboard_log_dir,
         verbose=1,
         device="cuda",
@@ -135,7 +137,7 @@ if __name__ == "__main__":
 
     model.learn(total_timesteps=MODEL_PARAMETERS['total_timesteps'],
                 progress_bar=True,
-                log_interval=20)
+                log_interval=1)
     # -----------------------------------------
     # time/
     #     fps
@@ -164,15 +166,16 @@ if __name__ == "__main__":
     df_test = add_scaled_ultosc_rsi_mfi_up_to_n(df_test, 35, 1)
 
     ENV_KWARGS['report_to_file'] = True
+    ENV_KWARGS['max_steps'] = 0
     val_env = DiscreteSpotTakerRL(df=df_test, **ENV_KWARGS)
 
     print(f'### VALIDATION STARTED ###', end='\n')
-    for _ in range(10):
-        obs = val_env.reset()
-        terminated = False
-        while not terminated:
-            action, _states = model.predict(obs)
-            obs, reward, terminated, info = val_env.step(action)
+    # for _ in range(10):
+    obs = val_env.reset()
+    terminated = False
+    while not terminated:
+        action, _states = model.predict(obs)
+        obs, reward, terminated, info = val_env.step(action)
 
     print(f'### VISUALIZATION TEST STARTED ###', end='\n')
     ENV_KWARGS['visualize'] = True

@@ -3,6 +3,7 @@ numpy
 websocket-client
 opencv-python
 matplotlib
+statsmodels
 mplfinance
 pandas
 requests

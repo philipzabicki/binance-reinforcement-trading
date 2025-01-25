@@ -16,7 +16,7 @@ ITV_ALIASES = {"1m": "1min", "3m": "3min", "5m": "5min", "15m": "15min", "30m": 
 
 
 def get_precalculated_dataset_by_filename(dataset_filename, train_test_split_date):
-    df = pd.read_csv(f'{MODELING_DATASET_DIR}/{dataset_filename}')
+    df = pd.read_csv(f'{MODELING_DATASET_DIR}{dataset_filename}')
     df['Opened'] = pd.to_datetime(df['Opened'])
     if train_test_split_date is not None:
         return df[(df['Opened'] <= train_test_split_date)], df[(df['Opened'] > train_test_split_date)]

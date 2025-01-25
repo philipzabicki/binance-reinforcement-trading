@@ -328,7 +328,7 @@ class TradingGraph:
         # redraw the canvas
         self.fig.canvas.draw()
         # convert canvas to image
-        img = fromstring(self.fig.canvas.tostring_rgb(), dtype=uint8, sep="")
+        img = fromstring(self.fig.canvas.tostring_argb(), dtype=uint8, sep="")
         img = img.reshape(self.fig.canvas.get_width_height()[::-1] + (3,))
 
         # img is rgb, convert to opencv's default bgr

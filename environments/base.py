@@ -209,7 +209,6 @@ class SpotBacktest(Env):
     def _report_to_file(self):
         self.report_writer.writerow(self._get_report_row())
 
-    # Reset the state of the environment to an initial state
     def reset(self, **kwargs):
         self.creation_t = time()
         self.done = False
@@ -232,7 +231,7 @@ class SpotBacktest(Env):
         self.stop_loss_price, self.take_profit_price = 0, 0
         self.qty = 0
         self.pnl = 0
-        self.absolute_profit = 0.0
+        self.percentage_profit, self.absolute_profit = 0.0, 0.0
         self.SL_losses, self.cumulative_fees, self.liquidations, self.take_profits_c = (
             0,
             0,
@@ -322,11 +321,11 @@ class SpotBacktest(Env):
         fee = _value * self.fee
         self.balance -= fee
         self.cumulative_fees += fee
-        percentage_profit = (self.balance / self.prev_bal) - 1
+        self.percentage_profit = (self.balance / self.prev_bal) - 1
         self.absolute_profit = self.balance - self.prev_bal
         # print(f'SOLD {self.qty} at {price}({adj_price}) profit ${self.balance-self.prev_bal:.2f}')
         # PROFIT #
-        if percentage_profit > 0:
+        if self.percentage_profit > 0:
             if self.save_ratio is not None:
                 save_amount = self.absolute_profit * self.save_ratio
                 self.save_balance += save_amount
@@ -334,19 +333,19 @@ class SpotBacktest(Env):
             if self.balance >= self.max_balance:
                 self.max_balance = self.balance
             self.good_trades_count += 1
-            if self.max_profit == 0 or percentage_profit > self.max_profit:
-                self.max_profit = percentage_profit
+            if self.max_profit == 0 or self.percentage_profit > self.max_profit:
+                self.max_profit = self.percentage_profit
         # LOSS #
-        elif percentage_profit < 0:
+        elif self.percentage_profit < 0:
             if self.balance <= self.min_balance:
                 self.min_balance = self.balance
             self.bad_trades_count += 1
-            if self.max_drawdown == 0 or percentage_profit < self.max_drawdown:
-                self.max_drawdown = percentage_profit
+            if self.max_drawdown == 0 or self.percentage_profit < self.max_drawdown:
+                self.max_drawdown = self.percentage_profit
             if sl:
                 self.SL_losses += self.absolute_profit
         self.PLs_and_ratios.append(
-            (percentage_profit, self.good_trades_count / self.bad_trades_count)
+            (self.percentage_profit, self.good_trades_count / self.bad_trades_count)
         )
         self.position_size = self.balance * self.position_ratio
         # If balance minus position_size and fee is less or eq 0 #
@@ -455,35 +454,36 @@ class SpotBacktest(Env):
                     - self.loss_hold_counter
                     - self.episode_orders
             )
-            if above_free > 0:
-                if hasattr(self, "leverage"):
-                    above_free_factor = above_free
-                    # above_free_factor = above_free / self.leverage**(1/3)
-                    # above_free_factor = above_free/sqrt(self.leverage)
-                else:
-                    above_free_factor = above_free
-                self.reward = (
-                                      above_free_factor
-                                      * self.episode_orders
-                                      * PnL_trades_ratio
-                                      * (hold_ratio ** (1 / 3))
-                                      * (PnL_means_ratio ** (1 / 3))
-                                      * in_gain_indicator
-                              ) / steps
-            else:
-                self.reward = (
-                                      above_free
-                                      * self.episode_orders
-                                      * 1
-                                      / PnL_trades_ratio
-                                      * 1
-                                      / (hold_ratio ** (1 / 3))
-                                      * 1
-                                      / (PnL_means_ratio ** (1 / 3))
-                                      * 1
-                                      / in_gain_indicator
-                              ) / steps
+            # if above_free > 0:
+            #     if hasattr(self, "leverage"):
+            #         above_free_factor = above_free
+            #         # above_free_factor = above_free / self.leverage**(1/3)
+            #         # above_free_factor = above_free/sqrt(self.leverage)
+            #     else:
+            #         above_free_factor = above_free
+            #     self.reward = (
+            #                           above_free_factor
+            #                           * self.episode_orders
+            #                           * PnL_trades_ratio
+            #                           * (hold_ratio ** (1 / 3))
+            #                           * (PnL_means_ratio ** (1 / 3))
+            #                           * in_gain_indicator
+            #                   ) / steps
+            # else:
+            #     self.reward = (
+            #                           above_free
+            #                           * self.episode_orders
+            #                           * 1
+            #                           / PnL_trades_ratio
+            #                           * 1
+            #                           / (hold_ratio ** (1 / 3))
+            #                           * 1
+            #                           / (PnL_means_ratio ** (1 / 3))
+            #                           * 1
+            #                           / in_gain_indicator
+            #                   ) / steps
             # self.reward = total_return*100
+            self.reward = above_free
         else:
             mean_pnl, stddev_pnl = 0.0, 0.0
             profits_mean, losses_mean, losses_stddev = 0.0, 0.0, 0.0
@@ -505,8 +505,8 @@ class SpotBacktest(Env):
         # self.reward = copysign((abs(gain)**1.5)*self.PL_count_mean*sqrt(hold_ratio)*sqrt(self.PL_ratio)*sqrt(self.episode_orders), gain)/self.total_steps
         # self.reward = copysign(gain**2, gain)+(self.episode_orders/sqrt(self.total_steps))+self.PL_count_mean+sqrt(hold_ratio)+sqrt(self.PL_ratio)
         exec_time = time() - self.creation_t
-        if self.balance >= 1_000_000:
-            self.verbose = True
+        # if self.balance >= 1_000_000:
+        #     self.verbose = True
         if self.verbose:
             print(
                 f"Episode finished: gain:${gain:.2f}({total_return * 100:.2f}%), gain/step:${gain / (self.end_step - self.start_step):.5f}, cumulative_fees:${self.cumulative_fees:.2f}, SL_losses:${self.SL_losses:.2f} take_profits:{self.take_profits_c}\n"
