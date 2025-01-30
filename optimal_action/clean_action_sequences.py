@@ -4,7 +4,7 @@ import os
 import numpy as np
 import pandas as pd
 
-from environments.action_optimize_env import SignalExecuteSpotEnv
+from environments.action_optimize_env import SignalCleanSpotEnv
 from utils.get_data import by_BinanceVision
 
 relative_path = os.path.join("..", "reports", "optimal_actions")
@@ -58,7 +58,7 @@ def main():
         # Wybranie odpowiedniego fragmentu danych OHLCV
         ohlcv_part = ohlcv.loc[start_time:end_time].reset_index()
 
-        env = SignalExecuteSpotEnv(df=ohlcv_part, **ENV_KWARGS)
+        env = SignalCleanSpotEnv(df=ohlcv_part, **ENV_KWARGS)
         env.reset()
         env.signals = action_sequence
         env_results = env()

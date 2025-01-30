@@ -11,6 +11,7 @@ from pymoo.core.mixed import MixedVariableMating, MixedVariableSampling, \
 from pymoo.core.problem import StarmapParallelization
 from pymoo.optimize import minimize
 
+from definitions import REPORT_DIR
 from genetic_classes.feature_action_fitter import (
     KeltnerChannelFitting,
 )
@@ -21,11 +22,11 @@ print(f'CPUs used: {CPU_CORES_COUNT}')
 
 PROBLEM = KeltnerChannelFitting
 ALGORITHM = MixedVariableGA
-POP_SIZE = 512
-TERMINATION = ('n_gen', 10)
+POP_SIZE = 1024
+TERMINATION = ('n_gen', 75)
 
-RESULTS_DIR = os.path.join("..", "reports", "feature_fits", "ma_band_action_fits")
-ACTIONS_FULLPATH = os.path.join("..", "reports", "optimal_actions", "final_combined_actions.csv")
+RESULTS_DIR = os.path.join(REPORT_DIR, "feature_fits", "ma_band_action_fits")
+ACTIONS_FULLPATH = os.path.join(REPORT_DIR, "optimal_actions", "final_combined_actions.csv")
 
 
 def main():
@@ -45,7 +46,7 @@ def main():
 
     os.makedirs(RESULTS_DIR, exist_ok=True)
 
-    for ma_type in range(0, 32):
+    for ma_type in range(15, 32):
         results = []  # Lista do przechowywania wyników dla danego ma_type
         for lower, upper in zip(quantiles[:-1], quantiles[1:]):
             print(f'Optimize run for ma_type: {ma_type}, range: ({lower}, {upper})')

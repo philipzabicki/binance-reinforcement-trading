@@ -205,6 +205,98 @@ def StochasticOscillator_signal(k_line: list[float] | np.ndarray, d_line: list[f
                     for cur_k, cur_d, prev_k, prev_d in
                     zip(k_line[1:], d_line[1:], k_line[:-1], d_line[:-1])]
 
+@jit(nopython=True, nogil=True, cache=True)
+def StochasticOscillator_threshold_cross_signal(
+    k_line: list[float] | np.ndarray,
+    d_line: list[float] | np.ndarray,
+    oversold_threshold: float = 20.0,
+    overbought_threshold: float = 80.0
+) -> list[float]:
+    """
+    Zwraca listę sygnałów:
+      *  +1  gdy K i D < oversold_threshold i wystąpiło przecięcie z dołu do góry (K > D przy jednoczesnym prev_K < prev_D)
+      *  -1  gdy K i D > overbought_threshold i wystąpiło przecięcie z góry na dół (K < D przy jednoczesnym prev_K > prev_D)
+      *   0  w przeciwnym wypadku
+    """
+    return [0.0] + [
+        1.0
+        if (
+            (cur_k < oversold_threshold)
+            and (cur_d < oversold_threshold)
+            and (cur_k > cur_d)
+            and (prev_k < prev_d)
+        )
+        else -1.0
+        if (
+            (cur_k > overbought_threshold)
+            and (cur_d > overbought_threshold)
+            and (cur_k < cur_d)
+            and (prev_k > prev_d)
+        )
+        else 0.0
+        for cur_k, cur_d, prev_k, prev_d in zip(k_line[1:], d_line[1:], k_line[:-1], d_line[:-1])
+    ]
+
+@jit(nopython=True, nogil=True, cache=True)
+def StochasticOscillator_mid_cross_signal(
+    k_line: list[float] | np.ndarray,
+    d_line: list[float] | np.ndarray,
+    mid_level: float = 50.0
+) -> list[float]:
+    """
+    Zwraca listę sygnałów:
+      *  +0.75 gdy K i D < mid_level i nastąpiło przecięcie z dołu do góry
+      *  -0.75 gdy K i D > mid_level i nastąpiło przecięcie z góry na dół
+      *   0    w przeciwnym wypadku
+    """
+    return [0.0] + [
+        1.0
+        if (
+            (cur_k < mid_level)
+            and (cur_d < mid_level)
+            and (cur_k > cur_d)
+            and (prev_k < prev_d)
+        )
+        else -1.0
+        if (
+            (cur_k > mid_level)
+            and (cur_d > mid_level)
+            and (cur_k < cur_d)
+            and (prev_k > prev_d)
+        )
+        else 0.0
+        for cur_k, cur_d, prev_k, prev_d in zip(k_line[1:], d_line[1:], k_line[:-1], d_line[:-1])
+    ]
+
+@jit(nopython=True, nogil=True, cache=True)
+def StochasticOscillator_threshold_signal(
+    k_line: list[float] | np.ndarray,
+    d_line: list[float] | np.ndarray,
+    oversold_threshold: float = 20.0,
+    overbought_threshold: float = 80.0
+) -> list[float]:
+    """
+    Zwraca listę sygnałów w zależności od tego, czy aktualne wartości K i D
+    znajdują się powyżej/poniżej ustalonych progów:
+      * +0.5  gdy K i D < oversold_threshold
+      * -0.5  gdy K i D > overbought_threshold
+      * +0.25 gdy K lub D < oversold_threshold (jeśli warunek wyżej nie jest spełniony)
+      * -0.25 gdy K lub D > overbought_threshold (jeśli warunek wyżej nie jest spełniony)
+      *  0     w przeciwnym wypadku
+    """
+    return [0.0] + [
+        1.0
+        if (cur_k < oversold_threshold) and (cur_d < oversold_threshold)
+        else -1.0
+        if (cur_k > overbought_threshold) and (cur_d > overbought_threshold)
+        else 0.5
+        if (cur_k < oversold_threshold) or (cur_d < oversold_threshold)
+        else -0.5
+        if (cur_k > overbought_threshold) or (cur_d > overbought_threshold)
+        else 0.0
+        for cur_k, cur_d in zip(k_line[1:], d_line[1:])
+    ]
+
 
 @feature_timeit
 def ADX_signal(adx_col: list | np.ndarray, minus_di: list | np.ndarray, plus_di: list | np.ndarray) -> list[float]:

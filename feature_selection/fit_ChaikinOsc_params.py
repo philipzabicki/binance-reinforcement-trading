@@ -11,6 +11,7 @@ from pymoo.core.mixed import MixedVariableMating, MixedVariableSampling, \
 from pymoo.core.problem import StarmapParallelization
 from pymoo.optimize import minimize
 
+from definitions import REPORT_DIR
 from genetic_classes.feature_action_fitter import (
     ChaikinOscillatorFitting
 )
@@ -22,12 +23,12 @@ print(f'CPUs used: {CPU_CORES_COUNT}')
 PROBLEM = ChaikinOscillatorFitting
 
 ALGORITHM = MixedVariableGA
-POP_SIZE = 16
-TERMINATION = ('n_gen', 10)
+POP_SIZE = 8192
+TERMINATION = ('n_gen', 30)
 
 RESULTS_FILENAME = 'chaikin_oscillator.csv'
-RESULTS_DIR = os.path.join("..", "reports", "feature_fits")
-ACTIONS_FULLPATH = os.path.join("..", "reports", "optimal_actions", "final_combined_actions.csv")
+RESULTS_DIR = os.path.join(REPORT_DIR, "feature_fits")
+ACTIONS_FULLPATH = os.path.join(REPORT_DIR, "optimal_actions", "final_combined_actions.csv")
 
 
 def main():

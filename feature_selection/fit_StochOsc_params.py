@@ -11,6 +11,7 @@ from pymoo.core.mixed import MixedVariableMating, MixedVariableSampling, \
 from pymoo.core.problem import StarmapParallelization
 from pymoo.optimize import minimize
 
+from definitions import REPORT_DIR
 from genetic_classes.feature_action_fitter import (
     StochasticOscillatorFitting
 )
@@ -26,8 +27,8 @@ POP_SIZE = 512
 TERMINATION = ('n_gen', 50)
 
 RESULTS_FILENAME = 'stochastic_oscillator.csv'
-RESULTS_DIR = os.path.join("..", "reports", "feature_fits")
-ACTIONS_FULLPATH = os.path.join("..", "reports", "optimal_actions", "final_combined_actions.csv")
+RESULTS_DIR = os.path.join(REPORT_DIR, "feature_fits")
+ACTIONS_FULLPATH = os.path.join(REPORT_DIR, "optimal_actions", "final_combined_actions.csv")
 
 
 def main():

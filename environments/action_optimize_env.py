@@ -4,7 +4,7 @@ from numpy.random import choice
 from .base import SpotBacktest
 
 
-class SignalExecuteSpotEnv(SpotBacktest):
+class SignalCleanSpotEnv(SpotBacktest):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if 'position_ratio' in kwargs:

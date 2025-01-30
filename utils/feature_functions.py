@@ -7,27 +7,27 @@ from scipy.stats import gaussian_kde
 from sklearn.preprocessing import MinMaxScaler
 from statsmodels.nonparametric.kde import KDEUnivariate
 
-from utils.ta_tools import get_MA_band_signal
-
-
-def keltner_channels_custom_mas(df, ma_periods, atr_periods, atr_multipliers):
-    """
-    eg. arguments
-    ma_periods = [5, 10, 25, 50, 75, 100]
-    atr_perods = [5, 10, 15, 20, 25, 30, 40, 50]
-    atr_multipliers = [.25, .5, 1., 1.25, 1.5, 1.75, 2., 2.5, 3.]
-    res is 16_416 columns
-    """
-    # taking only ohlc values and converting to nump for speed
-    np_df = df.iloc[:, 1:6].to_numpy()
-    print(np_df)
-    for ma_p in ma_periods:
-        for atr_p in atr_periods:
-            for atr_m in atr_multipliers:
-                for ma_id in range(0, 38):
-                    df[f'{ma_id}MAp{ma_p}atr_p{atr_p}atr_m{atr_m}'] = get_MA_band_signal(np_df, ma_id, ma_p, atr_p,
-                                                                                         atr_m)
-    return df
+# from utils.ta_tools import get_MA_band_signal
+#
+#
+# def keltner_channels_custom_mas(df, ma_periods, atr_periods, atr_multipliers):
+#     """
+#     eg. arguments
+#     ma_periods = [5, 10, 25, 50, 75, 100]
+#     atr_perods = [5, 10, 15, 20, 25, 30, 40, 50]
+#     atr_multipliers = [.25, .5, 1., 1.25, 1.5, 1.75, 2., 2.5, 3.]
+#     res is 16_416 columns
+#     """
+#     # taking only ohlc values and converting to nump for speed
+#     np_df = df.iloc[:, 1:6].to_numpy()
+#     print(np_df)
+#     for ma_p in ma_periods:
+#         for atr_p in atr_periods:
+#             for atr_m in atr_multipliers:
+#                 for ma_id in range(0, 38):
+#                     df[f'{ma_id}MAp{ma_p}atr_p{atr_p}atr_m{atr_m}'] = get_MA_band_signal(np_df, ma_id, ma_p, atr_p,
+#                                                                                          atr_m)
+#     return df
 
 
 def add_scaled_ultosc_rsi_mfi_up_to_n(df, n, step=1):

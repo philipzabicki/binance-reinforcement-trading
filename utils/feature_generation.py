@@ -40,6 +40,7 @@ def custom_keltner_channel_signal(np_df: np.ndarray,
 
 def custom_ADX_classic_diff_ma(
         ohlcv: np.ndarray,
+        true_range: np.ndarray,
         adx_period: int,
         ma_type_tr: int,
         ma_type_posDM: int,
@@ -48,12 +49,7 @@ def custom_ADX_classic_diff_ma(
 ):
     high = ohlcv[:, 1]
     low = ohlcv[:, 2]
-    close = ohlcv[:, 3]
 
-    # 1) Surowy TR z TA-Lib (bez smoothingu)
-    TR_raw = talib.TRANGE(high, low, close)
-
-    # 2) Surowe +DM, -DM (bez smoothingu z TA-Lib, bo tam jest Wilder)
     prev_high = np.roll(high, 1)
     prev_high[0] = high[0]
 
@@ -74,23 +70,48 @@ def custom_ADX_classic_diff_ma(
         0.0
     )
 
-    # 3) Pierwsze wygładzenie TR, +DM, -DM -> get_1D_MA
-    TR_smooth = get_1D_MA(TR_raw, ma_type_tr, adx_period)
+    TR_smooth = get_1D_MA(true_range, ma_type_tr, adx_period)
     pos_DM_smooth = get_1D_MA(pos_DM_raw, ma_type_posDM, adx_period)
     neg_DM_smooth = get_1D_MA(neg_DM_raw, ma_type_negDM, adx_period)
 
-    # 4) +DI, -DI (już po wygładzeniu TR, +DM, -DM)
     with np.errstate(divide='ignore', invalid='ignore'):
         plus_DI = 100.0 * (pos_DM_smooth / TR_smooth)
         minus_DI = 100.0 * (neg_DM_smooth / TR_smooth)
 
-    # 5) Surowy DX = 100 * (|+DI - -DI| / (+DI + -DI))
     with np.errstate(divide='ignore', invalid='ignore'):
         DX_raw = 100.0 * np.abs(plus_DI - minus_DI) / (plus_DI + minus_DI)
 
-    # 6) Drugie wygładzenie: DX -> ADX
-    #    (zamiast Wilder Smoothing, używamy get_1D_MA z ma_type_dx)
     adx = get_1D_MA(DX_raw, ma_type_dx, adx_period)
+
+    # Obliczanie kwantyli, min i max dla ADX
+    adx_quantiles = np.quantile(adx, [0.25, 0.5, 0.75])
+    adx_min = np.min(adx)
+    adx_max = np.max(adx)
+
+    # Obliczanie kwantyli, min i max dla +DI
+    plus_DI_quantiles = np.quantile(plus_DI, [0.25, 0.5, 0.75])
+    plus_DI_min = np.min(plus_DI)
+    plus_DI_max = np.max(plus_DI)
+
+    # Obliczanie kwantyli, min i max dla -DI
+    minus_DI_quantiles = np.quantile(minus_DI, [0.25, 0.5, 0.75])
+    minus_DI_min = np.min(minus_DI)
+    minus_DI_max = np.max(minus_DI)
+
+    # Wyświetlanie wyników
+    print("=== ADX ===")
+    print(f"Kwantyle 25%: {adx_quantiles[0]:.2f}, 50% (Mediana): {adx_quantiles[1]:.2f}, 75%: {adx_quantiles[2]:.2f}")
+    print(f"Min: {adx_min:.2f}, Max: {adx_max:.2f}\n")
+
+    print("=== +DI ===")
+    print(
+        f"Kwantyle 25%: {plus_DI_quantiles[0]:.2f}, 50% (Mediana): {plus_DI_quantiles[1]:.2f}, 75%: {plus_DI_quantiles[2]:.2f}")
+    print(f"Min: {plus_DI_min:.2f}, Max: {plus_DI_max:.2f}\n")
+
+    print("=== -DI ===")
+    print(
+        f"Kwantyle 25%: {minus_DI_quantiles[0]:.2f}, 50% (Mediana): {minus_DI_quantiles[1]:.2f}, 75%: {minus_DI_quantiles[2]:.2f}")
+    print(f"Min: {minus_DI_min:.2f}, Max: {minus_DI_max:.2f}\n")
 
     return adx, plus_DI, minus_DI
 

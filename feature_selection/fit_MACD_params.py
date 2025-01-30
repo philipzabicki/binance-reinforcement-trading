@@ -11,6 +11,7 @@ from pymoo.core.mixed import MixedVariableMating, MixedVariableSampling, \
 from pymoo.core.problem import StarmapParallelization
 from pymoo.optimize import minimize
 
+from definitions import REPORT_DIR
 from genetic_classes.feature_action_fitter import (
     MACDCFitting,
 )
@@ -24,14 +25,14 @@ SIGNALS_SOURCE = 'cross'
 # SIGNALS_SOURCE = 'histogram-reversal'
 
 ALGORITHM = MixedVariableGA
-POP_SIZE = 16
-TERMINATION = ('n_gen', 10)
+POP_SIZE = 1024
+TERMINATION = ('n_gen', 75)
 
 RESULTS_FILENAME = 'macd_cross.csv'
 # RESULTS_FILENAME = 'macd_zero_cross.csv'
 # RESULTS_FILENAME = 'macd_histogram_reversal.csv'
-RESULTS_DIR = os.path.join("..", "reports", "feature_fits")
-ACTIONS_FULLPATH = os.path.join("..", "reports", "optimal_actions", "final_combined_actions.csv")
+RESULTS_DIR = os.path.join(REPORT_DIR, "feature_fits")
+ACTIONS_FULLPATH = os.path.join(REPORT_DIR, "optimal_actions", "final_combined_actions.csv")
 
 
 def main():

@@ -10,7 +10,7 @@ from utils.feature_generation import custom_StochasticOscillator, custom_Chaikin
 # from scipy.signal import correlate
 # from tslearn.metrics import dtw
 from utils.ta_tools import MACD_cross_signal, MACD_histogram_reversal_signal, MACD_zero_cross_signal, \
-    StochasticOscillator_signal, ChaikinOscillator_signal
+    StochasticOscillator_signal, ChaikinOscillator_signal, StochasticOscillator_threshold_cross_signal, StochasticOscillator_threshold_signal, StochasticOscillator_mid_cross_signal
 
 
 class KeltnerChannelFitting(ElementwiseProblem):
@@ -89,19 +89,26 @@ class MACDCFitting(ElementwiseProblem):
 
 
 class StochasticOscillatorFitting(ElementwiseProblem):
-    def __init__(self, df, lower, upper, *args, **kwargs):
+    def __init__(self, df, lower, upper, *args, signals_source='cross', **kwargs):
+        self.signals_source = signals_source
         self.actions = df['Action'].values
         weights = df['Weight'].values
         self.mask = (weights > lower) & (weights <= upper)
         self.df = df.to_numpy()
-        stoch_variables = {"oversold_threshold": Real(bounds=(0.0, 50.0)),
-                           "overbought_threshold": Real(bounds=(50.0, 100.0)),
+        stoch_variables = {
                            "fastK_period": Integer(bounds=(2, 250)),
                            "slowK_period": Integer(bounds=(1, 250)),
                            "slowD_period": Integer(bounds=(2, 250)),
                            "slowK_ma_type": Integer(bounds=(0, 25)),
                            "slowD_ma_type": Integer(bounds=(0, 25))
                            }
+        if self.signals_source == 'mid_cross':
+            stoch_variables.update({"mid_level": Real(bounds=(0.0, 100.0))})
+        elif self.signals_source in ['cross', 'threshold']:
+            stoch_variables.update({"oversold_threshold": Real(bounds=(0.0, 50.0)),
+                                    "overbought_threshold": Real(bounds=(50.0, 100.0))})
+        else:
+            raise ValueError('Unknown signals source, available {cross, threshold, mid_cross} ')
         super().__init__(*args, vars=stoch_variables, n_obj=1, **kwargs)
 
     def _evaluate(self, X, out, *args, **kwargs):
@@ -114,10 +121,22 @@ class StochasticOscillatorFitting(ElementwiseProblem):
                                                    slowD_ma_type=X['slowD_ma_type'])
         # print(f'slowK quantiles: {percentile(slowK, [0, 50, 100])}')
         # print(f'slowD quantiles: {percentile(slowD, [0, 50, 100])}', end='\n')
-        signals = array(StochasticOscillator_signal(slowK,
+        if self.signals_source == 'cross':
+            signals = array(StochasticOscillator_threshold_cross_signal(slowK,
                                                     slowD,
                                                     oversold_threshold=X['oversold_threshold'],
                                                     overbought_threshold=X['overbought_threshold']))
+        elif self.signals_source == 'threshold':
+            signals = array(StochasticOscillator_threshold_signal(slowK,
+                                                    slowD,
+                                                    oversold_threshold=X['oversold_threshold'],
+                                                    overbought_threshold=X['overbought_threshold']))
+        elif self.signals_source == 'mid_cross':
+            signals = array(StochasticOscillator_mid_cross_signal(slowK,
+                                                                  slowD,
+                                                    mid_level=X['mid_level']))
+        else:
+            raise ValueError('Unknown signals source, available {cross, threshold, mid_cross} ')
         # signals = where(signals >= 1, 1, where(signals <= -1, -1, 0))
         # out["F"] = euclidean(nan_to_num(signals[mask]), self.actions[mask])
         out["F"] = mean_squared_error(nan_to_num(signals[self.mask]), self.actions[self.mask])
