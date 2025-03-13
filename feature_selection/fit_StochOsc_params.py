@@ -21,12 +21,17 @@ CPU_CORES_COUNT = cpu_count()
 print(f'CPUs used: {CPU_CORES_COUNT}')
 
 PROBLEM = StochasticOscillatorFitting
+# SIGNALS_SOURCE = 'cross'
+# SIGNALS_SOURCE = 'mid-cross'
+SIGNALS_SOURCE = 'threshold'
 
 ALGORITHM = MixedVariableGA
-POP_SIZE = 512
-TERMINATION = ('n_gen', 50)
+POP_SIZE = 2048
+TERMINATION = ('n_gen', 150)
 
-RESULTS_FILENAME = 'stochastic_oscillator.csv'
+# RESULTS_FILENAME = 'stoch_osc_cross.csv'
+# RESULTS_FILENAME = 'stoch_osc_mid_cross.csv'
+RESULTS_FILENAME = 'stoch_osc_threshold.csv'
 RESULTS_DIR = os.path.join(REPORT_DIR, "feature_fits")
 ACTIONS_FULLPATH = os.path.join(REPORT_DIR, "optimal_actions", "final_combined_actions.csv")
 
@@ -56,6 +61,7 @@ def main():
             df,
             lower,
             upper,
+            signals_source=SIGNALS_SOURCE,
             elementwise_runner=runner
         )
 

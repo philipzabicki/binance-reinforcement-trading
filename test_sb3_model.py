@@ -1,9 +1,9 @@
+from environments.spot_rl_env import SpotTakerRL
 from numpy import inf
 from stable_baselines3 import PPO
 from torch import cuda
 
 from definitions import MODELS_DIR
-from environments.spot_rl_env import SpotTakerRL
 from utils.data_collector import get_precalculated_dataset_by_filename
 from utils.feature_functions import *
 

@@ -1,6 +1,6 @@
+from environments.spot_rl_env import SpotTakerRL
 from numpy import inf
 
-from environments.spot_rl_env import SpotTakerRL
 from utils.data_collector import by_BinanceVision
 
 TICKER = "BTCUSDT"

@@ -23,8 +23,8 @@ print(f'CPUs used: {CPU_CORES_COUNT}')
 PROBLEM = ChaikinOscillatorFitting
 
 ALGORITHM = MixedVariableGA
-POP_SIZE = 8192
-TERMINATION = ('n_gen', 30)
+POP_SIZE = 2048
+TERMINATION = ('n_gen', 150)
 
 RESULTS_FILENAME = 'chaikin_oscillator.csv'
 RESULTS_DIR = os.path.join(REPORT_DIR, "feature_fits")

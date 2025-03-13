@@ -7,6 +7,7 @@ from scipy.stats import gaussian_kde
 from sklearn.preprocessing import MinMaxScaler
 from statsmodels.nonparametric.kde import KDEUnivariate
 
+
 # from utils.ta_tools import get_MA_band_signal
 #
 #

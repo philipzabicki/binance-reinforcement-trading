@@ -1,6 +1,6 @@
 import os
 # import numpy as np
-from multiprocessing import Pool, cpu_count
+from multiprocessing import Pool
 
 import pandas as pd
 # from pymoo.algorithms.soo.nonconvex.ga import GA
@@ -17,20 +17,22 @@ from genetic_classes.feature_action_fitter import (
 )
 from utils.miscellaneous import convert_variables
 
-CPU_CORES_COUNT = cpu_count()
+# CPU_CORES_COUNT = cpu_count()
+CPU_CORES_COUNT = 14
 print(f'CPUs used: {CPU_CORES_COUNT}')
 
 PROBLEM = MACDCFitting
-SIGNALS_SOURCE = 'cross'
-# SIGNALS_SOURCE = 'histogram-reversal'
+# SIGNALS_SOURCE = 'cross'
+# SIGNALS_SOURCE = 'zero-cross'
+SIGNALS_SOURCE = 'histogram-reversal'
 
 ALGORITHM = MixedVariableGA
-POP_SIZE = 1024
-TERMINATION = ('n_gen', 75)
+POP_SIZE = 2048
+TERMINATION = ('n_gen', 150)
 
-RESULTS_FILENAME = 'macd_cross.csv'
+# RESULTS_FILENAME = 'macd_cross.csv'
 # RESULTS_FILENAME = 'macd_zero_cross.csv'
-# RESULTS_FILENAME = 'macd_histogram_reversal.csv'
+RESULTS_FILENAME = 'macd_histogram_reversal.csv'
 RESULTS_DIR = os.path.join(REPORT_DIR, "feature_fits")
 ACTIONS_FULLPATH = os.path.join(REPORT_DIR, "optimal_actions", "final_combined_actions.csv")
 
@@ -54,7 +56,7 @@ def main():
     os.makedirs(RESULTS_DIR, exist_ok=True)
 
     results = []  # Lista do przechowywania wyników dla danego ma_type
-    for lower, upper in zip(quantiles[8:-1], quantiles[9:]):
+    for lower, upper in zip(quantiles[:-1], quantiles[1:]):
         print(f'Optimize run for macd, range: ({lower}, {upper})')
         problem = PROBLEM(
             df,

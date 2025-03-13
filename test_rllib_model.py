@@ -1,12 +1,12 @@
 from datetime import datetime as dt
 
 import ray
+from environments.spot_rl_env import SpotTakerRL
 from numpy import inf
 from ray.rllib.algorithms import ppo
 from ray.rllib.env import EnvContext
 
 from definitions import MODELS_DIR
-from environments.spot_rl_env import SpotTakerRL
 from utils.data_collector import by_BinanceVision
 
 TICKER = "BTCUSDT"

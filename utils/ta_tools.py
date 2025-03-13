@@ -81,6 +81,43 @@ def zscore_standardize(values: list | np.ndarray) -> np.ndarray:
     return (values - np.mean(values)) / np.std(values)
 
 
+# # @jit(nopython=True, nogil=True, cache=True)
+# def extract_segments_indices(signal):
+#     segments = []
+#     n = len(signal)
+#     i = 0
+#     while i < n:
+#         if signal[i] == 1:
+#             start = i
+#             i += 1
+#             while i < n and signal[i] != -1:
+#                 i += 1
+#             if i < n:  # Found -1
+#                 segments.append((start, i))
+#         else:
+#             i += 1
+#     return segments
+@jit(nopython=True, nogil=True, cache=True)
+def extract_segments_indices(signal):
+    n = signal.shape[0]
+    segments_out = np.empty((n // 2, 2), dtype=np.int64)
+    seg_count = 0
+    i = 0
+    while i < n:
+        if signal[i] == 1:
+            start = i
+            i += 1
+            while i < n and signal[i] != -1:
+                i += 1
+            if i < n:  # Found -1
+                segments_out[seg_count, 0] = start
+                segments_out[seg_count, 1] = i
+                seg_count += 1
+        else:
+            i += 1
+    return segments_out[:seg_count]
+
+
 # Calculates and returns linear regression slope but predictor variable(X) are natural numbers from 1 to len of dependent variable(Y)
 # Y are supposed to be balance divided by initial balance ratios per every env step
 @jit(nopython=True, nogil=True, cache=True)
@@ -184,33 +221,11 @@ def RSI_oversold_signal(rsi_like_indicator: list[float] | np.ndarray, timeperiod
 
 
 @jit(nopython=True, nogil=True, cache=True)
-def StochasticOscillator_signal(k_line: list[float] | np.ndarray, d_line: list[float] | np.ndarray,
-                                oversold_threshold: float = 20.0, overbought_threshold: float = 80.0) -> list[float]:
-    # signal logic:
-    # * 1s - cross above/below threshold
-    # * .75s cross above/below 0
-    # * 0.5s both above/below threshold
-    # * 0.25s - one above/below threshold
-    return [0.0] + [1 if (cur_k < oversold_threshold) and (cur_d < oversold_threshold) and (cur_k > cur_d) \
-                         and (prev_k < prev_d) else
-                    -1 if (cur_k > overbought_threshold) and (cur_d > overbought_threshold) and (cur_k < cur_d) \
-                          and (prev_k > prev_d) else
-                    .75 if (cur_k < 50.0) and (cur_d < 50.0) and (cur_k > cur_d) and (prev_k < prev_d) else
-                    -.75 if (cur_k > 50.0) and (cur_d > 50.0) and (cur_k < cur_d) and (prev_k > prev_d) else
-                    0.5 if (cur_k < oversold_threshold) and (cur_d < oversold_threshold) else
-                    -0.5 if (cur_k > overbought_threshold) and (cur_d > overbought_threshold) else
-                    0.25 if (cur_k < oversold_threshold) or (cur_d < oversold_threshold) else
-                    -0.25 if (cur_k > overbought_threshold) or (cur_d > overbought_threshold) else
-                    0
-                    for cur_k, cur_d, prev_k, prev_d in
-                    zip(k_line[1:], d_line[1:], k_line[:-1], d_line[:-1])]
-
-@jit(nopython=True, nogil=True, cache=True)
 def StochasticOscillator_threshold_cross_signal(
-    k_line: list[float] | np.ndarray,
-    d_line: list[float] | np.ndarray,
-    oversold_threshold: float = 20.0,
-    overbought_threshold: float = 80.0
+        k_line: list[float] | np.ndarray,
+        d_line: list[float] | np.ndarray,
+        oversold_threshold: float = 20.0,
+        overbought_threshold: float = 80.0
 ) -> list[float]:
     """
     Zwraca listę sygnałów:
@@ -221,27 +236,28 @@ def StochasticOscillator_threshold_cross_signal(
     return [0.0] + [
         1.0
         if (
-            (cur_k < oversold_threshold)
-            and (cur_d < oversold_threshold)
-            and (cur_k > cur_d)
-            and (prev_k < prev_d)
+                (cur_k < oversold_threshold)
+                and (cur_d < oversold_threshold)
+                and (cur_k > cur_d)
+                and (prev_k < prev_d)
         )
         else -1.0
         if (
-            (cur_k > overbought_threshold)
-            and (cur_d > overbought_threshold)
-            and (cur_k < cur_d)
-            and (prev_k > prev_d)
+                (cur_k > overbought_threshold)
+                and (cur_d > overbought_threshold)
+                and (cur_k < cur_d)
+                and (prev_k > prev_d)
         )
         else 0.0
         for cur_k, cur_d, prev_k, prev_d in zip(k_line[1:], d_line[1:], k_line[:-1], d_line[:-1])
     ]
 
+
 @jit(nopython=True, nogil=True, cache=True)
 def StochasticOscillator_mid_cross_signal(
-    k_line: list[float] | np.ndarray,
-    d_line: list[float] | np.ndarray,
-    mid_level: float = 50.0
+        k_line: list[float] | np.ndarray,
+        d_line: list[float] | np.ndarray,
+        mid_level: float = 50.0
 ) -> list[float]:
     """
     Zwraca listę sygnałów:
@@ -252,28 +268,29 @@ def StochasticOscillator_mid_cross_signal(
     return [0.0] + [
         1.0
         if (
-            (cur_k < mid_level)
-            and (cur_d < mid_level)
-            and (cur_k > cur_d)
-            and (prev_k < prev_d)
+                (cur_k < mid_level)
+                and (cur_d < mid_level)
+                and (cur_k > cur_d)
+                and (prev_k < prev_d)
         )
         else -1.0
         if (
-            (cur_k > mid_level)
-            and (cur_d > mid_level)
-            and (cur_k < cur_d)
-            and (prev_k > prev_d)
+                (cur_k > mid_level)
+                and (cur_d > mid_level)
+                and (cur_k < cur_d)
+                and (prev_k > prev_d)
         )
         else 0.0
         for cur_k, cur_d, prev_k, prev_d in zip(k_line[1:], d_line[1:], k_line[:-1], d_line[:-1])
     ]
 
+
 @jit(nopython=True, nogil=True, cache=True)
 def StochasticOscillator_threshold_signal(
-    k_line: list[float] | np.ndarray,
-    d_line: list[float] | np.ndarray,
-    oversold_threshold: float = 20.0,
-    overbought_threshold: float = 80.0
+        k_line: list[float] | np.ndarray,
+        d_line: list[float] | np.ndarray,
+        oversold_threshold: float = 20.0,
+        overbought_threshold: float = 80.0
 ) -> list[float]:
     """
     Zwraca listę sygnałów w zależności od tego, czy aktualne wartości K i D
@@ -298,7 +315,143 @@ def StochasticOscillator_threshold_signal(
     ]
 
 
-@feature_timeit
+########################################################################################################################
+# New ones for Stoch Osc
+# 1. k_int_cross: k-line internal threshold cross
+@jit(nopython=True, nogil=True, cache=True)
+def k_int_cross(k_line: list[float] | np.ndarray, d_line: list[float] | np.ndarray = None,
+                oversold_threshold: float = 20.0, overbought_threshold: float = 80.0) -> list[float]:
+    return [0.0] + [
+        1.0 if (prev > oversold_threshold > curr) else
+        -1.0 if (prev < overbought_threshold < curr) else 0.0
+        for curr, prev in zip(k_line[1:], k_line[:-1])
+    ]
+
+
+# 2. k_ext_cross: k-line external threshold cross
+@jit(nopython=True, nogil=True, cache=True)
+def k_ext_cross(k_line: list[float] | np.ndarray, d_line: list[float] | np.ndarray = None,
+                oversold_threshold: float = 20.0, overbought_threshold: float = 80.0) -> list[float]:
+    return [0.0] + [
+        1.0 if (prev < oversold_threshold < curr) else
+        -1.0 if (prev > overbought_threshold > curr) else 0.0
+        for curr, prev in zip(k_line[1:], k_line[:-1])
+    ]
+
+
+# 3. d_int_cross: d-line internal threshold cross
+@jit(nopython=True, nogil=True, cache=True)
+def d_int_cross(k_line: list[float] | np.ndarray, d_line: list[float] | np.ndarray = None,
+                oversold_threshold: float = 20.0, overbought_threshold: float = 80.0) -> list[float]:
+    return [0.0] + [
+        1.0 if (prev > oversold_threshold > curr) else
+        -1.0 if (prev < overbought_threshold < curr) else 0.0
+        for curr, prev in zip(d_line[1:], d_line[:-1])
+    ]
+
+
+# 4. d_ext_cross: d-line external threshold cross
+@jit(nopython=True, nogil=True, cache=True)
+def d_ext_cross(k_line: list[float] | np.ndarray, d_line: list[float] | np.ndarray = None,
+                oversold_threshold: float = 20.0, overbought_threshold: float = 80.0) -> list[float]:
+    return [0.0] + [
+        1.0 if (prev < oversold_threshold < curr) else
+        -1.0 if (prev > overbought_threshold > curr) else 0.0
+        for curr, prev in zip(d_line[1:], d_line[:-1])
+    ]
+
+
+# 5. k_cross_int_os_ext_ob:
+#    Buy signal when k-line crosses oversold internally; sell signal when k-line crosses overbought externally.
+@jit(nopython=True, nogil=True, cache=True)
+def k_cross_int_os_ext_ob(k_line: list[float] | np.ndarray, d_line: list[float] | np.ndarray = None,
+                          oversold_threshold: float = 20.0, overbought_threshold: float = 80.0) -> list[float]:
+    return [0.0] + [
+        1.0 if (prev > oversold_threshold > curr) else
+        -1.0 if (prev > overbought_threshold > curr) else 0.0
+        for curr, prev in zip(k_line[1:], k_line[:-1])
+    ]
+
+
+# 6. k_cross_ext_os_int_ob:
+#    Buy signal when k-line crosses oversold externally; sell signal when k-line crosses overbought internally.
+@jit(nopython=True, nogil=True, cache=True)
+def k_cross_ext_os_int_ob(k_line: list[float] | np.ndarray, d_line: list[float] | np.ndarray = None,
+                          oversold_threshold: float = 20.0, overbought_threshold: float = 80.0) -> list[float]:
+    return [0.0] + [
+        1.0 if (prev < oversold_threshold < curr) else
+        -1.0 if (prev < overbought_threshold < curr) else 0.0
+        for curr, prev in zip(k_line[1:], k_line[:-1])
+    ]
+
+
+# 7. d_cross_int_os_ext_ob:
+#    Buy signal when d-line crosses oversold internally; sell signal when d-line crosses overbought externally.
+@jit(nopython=True, nogil=True, cache=True)
+def d_cross_int_os_ext_ob(k_line: list[float] | np.ndarray, d_line: list[float] | np.ndarray = None,
+                          oversold_threshold: float = 20.0, overbought_threshold: float = 80.0) -> list[float]:
+    return [0.0] + [
+        1.0 if (prev > oversold_threshold > curr) else
+        -1.0 if (prev > overbought_threshold > curr) else 0.0
+        for curr, prev in zip(d_line[1:], d_line[:-1])
+    ]
+
+
+# 8. d_cross_ext_os_int_ob:
+#    Buy signal when d-line crosses oversold externally; sell signal when d-line crosses overbought internally.
+@jit(nopython=True, nogil=True, cache=True)
+def d_cross_ext_os_int_ob(k_line: list[float] | np.ndarray, d_line: list[float] | np.ndarray = None,
+                          oversold_threshold: float = 20.0, overbought_threshold: float = 80.0) -> list[float]:
+    return [0.0] + [
+        1.0 if (prev < oversold_threshold < curr) else
+        -1.0 if (prev < overbought_threshold < curr) else 0.0
+        for curr, prev in zip(d_line[1:], d_line[:-1])
+    ]
+
+
+# 9. kd_cross: Generic crossing between k and d lines (no threshold limits)
+@jit(nopython=True, nogil=True, cache=True)
+def kd_cross(k_line: list[float] | np.ndarray, d_line: list[float] | np.ndarray = None,
+             oversold_threshold: float = 20.0, overbought_threshold: float = 80.0) -> list[float]:
+    return [0.0] + [
+        1.0 if (prev_k < prev_d and curr_k > curr_d) else
+        -1.0 if (prev_k > prev_d and curr_k < curr_d) else 0.0
+        for curr_k, curr_d, prev_k, prev_d in zip(k_line[1:], d_line[1:], k_line[:-1], d_line[:-1])
+    ]
+
+
+# 10. kd_cross_inside: k and d cross when both are within the threshold range (between oversold and overbought)
+@jit(nopython=True, nogil=True, cache=True)
+def kd_cross_inside(k_line: list[float] | np.ndarray, d_line: list[float] | np.ndarray = None,
+                    oversold_threshold: float = 20.0, overbought_threshold: float = 80.0) -> list[float]:
+    return [0.0] + [
+        1.0 if (prev_k < prev_d and curr_k > curr_d and
+                (oversold_threshold < curr_k < overbought_threshold) and
+                (oversold_threshold < curr_d < overbought_threshold))
+        else -1.0 if (prev_k > prev_d and curr_k < curr_d and
+                      (oversold_threshold < curr_k < overbought_threshold) and
+                      (oversold_threshold < curr_d < overbought_threshold))
+        else 0.0
+        for curr_k, curr_d, prev_k, prev_d in zip(k_line[1:], d_line[1:], k_line[:-1], d_line[:-1])
+    ]
+
+
+# 11. kd_cross_outside: k and d cross when both are outside the threshold range on the same side
+@jit(nopython=True, nogil=True, cache=True)
+def kd_cross_outside(k_line: list[float] | np.ndarray, d_line: list[float] | np.ndarray = None,
+                     oversold_threshold: float = 20.0, overbought_threshold: float = 80.0) -> list[float]:
+    return [0.0] + [
+        1.0 if (prev_k < prev_d and curr_k > curr_d and
+                (curr_k < oversold_threshold and curr_d < oversold_threshold))
+        else -1.0 if (prev_k > prev_d and curr_k < curr_d and
+                      (curr_k > overbought_threshold and curr_d > overbought_threshold))
+        else 0.0
+        for curr_k, curr_d, prev_k, prev_d in zip(k_line[1:], d_line[1:], k_line[:-1], d_line[:-1])
+    ]
+
+
+# @feature_timeit
+@jit(nopython=True, nogil=True, cache=True)
 def ADX_signal(adx_col: list | np.ndarray, minus_di: list | np.ndarray, plus_di: list | np.ndarray) -> list[float]:
     """
   Calculate ADX (Average Directional Index) signals based on the given parameters.
@@ -347,7 +500,8 @@ def ADX_signal(adx_col: list | np.ndarray, minus_di: list | np.ndarray, plus_di:
                     zip(plus_di[1:], minus_di[1:], adx_col[1:], plus_di[:-1], minus_di[:-1])]
 
 
-@feature_timeit
+# @feature_timeit
+@jit(nopython=True, nogil=True, cache=True)
 def ADX_trend_signal(adx_col: list | np.ndarray,
                      minus_di: list | np.ndarray,
                      plus_di: list | np.ndarray) -> list[float | int]:
@@ -394,6 +548,106 @@ def ADX_trend_signal(adx_col: list | np.ndarray,
             for adx, mDI, pDI in zip(adx_col, minus_di, plus_di)]
 
 
+@jit(nopython=True, nogil=True, cache=True)
+def MACD_lines_cross_with_zero(macd_col: list | np.ndarray, signal_col: list | np.ndarray) -> list[float | int]:
+    return [0.0] + [1 if (cur_sig < 0) and (cur_macd < 0) and (cur_macd > cur_sig) and (prev_macd < prev_sig) else
+                    -1 if (cur_sig > 0) and (cur_macd > 0) and (cur_macd < cur_sig) and (prev_macd > prev_sig) else
+                    0
+                    for cur_sig, cur_macd, prev_sig, prev_macd in
+                    zip(signal_col[1:], macd_col[1:], signal_col[:-1], macd_col[:-1])]
+
+
+@jit(nopython=True, nogil=True, cache=True)
+def MACD_lines_cross(macd_col: list | np.ndarray, signal_col: list | np.ndarray) -> list[float | int]:
+    return [0.0] + [1 if (cur_macd > cur_sig) and (prev_macd < prev_sig) else
+                    -1 if (cur_macd < cur_sig) and (prev_macd > prev_sig) else
+                    0
+                    for cur_sig, cur_macd, prev_sig, prev_macd in
+                    zip(signal_col[1:], macd_col[1:], signal_col[:-1], macd_col[:-1])]
+
+
+@jit(nopython=True, nogil=True, cache=True)
+def MACD_lines_approaching_cross_with_zero(macd_col: list | np.ndarray, signal_col: list | np.ndarray) -> list[
+    float | int]:
+    return [0.0] + [1 if (cur_sig < 0) and (cur_macd < 0) and (cur_macd > prev_macd) and (cur_sig < prev_sig) else
+                    -1 if (cur_sig > 0) and (cur_macd > 0) and (cur_macd < prev_macd) and (cur_sig > prev_sig) else
+                    0
+                    for cur_sig, cur_macd, prev_sig, prev_macd in
+                    zip(signal_col[1:], macd_col[1:], signal_col[:-1], macd_col[:-1])]
+
+
+@jit(nopython=True, nogil=True, cache=True)
+def MACD_lines_approaching_cross(macd_col: list | np.ndarray, signal_col: list | np.ndarray) -> list[float | int]:
+    return [0.0] + [1 if (cur_macd > prev_macd) and (cur_sig < prev_sig) else
+                    -1 if (cur_macd < prev_macd) and (cur_sig > prev_sig) else
+                    0
+                    for cur_sig, cur_macd, prev_sig, prev_macd in
+                    zip(signal_col[1:], macd_col[1:], signal_col[:-1], macd_col[:-1])]
+
+
+@jit(nopython=True, nogil=True, cache=True)
+def MACD_signal_line_zero_cross(_, signal_col: list | np.ndarray) -> list[float | int]:
+    return [0.0] + [1 if cur_sig > 0 > prev_sig else
+                    -1 if cur_sig < 0 < prev_sig else
+                    0
+                    for cur_sig, prev_sig in
+                    zip(signal_col[1:], signal_col[:-1])]
+
+
+@jit(nopython=True, nogil=True, cache=True)
+def MACD_line_zero_cross(macd_col: list | np.ndarray, _) -> list[float | int]:
+    return [0.0] + [1 if cur_macd > 0 > prev_macd else
+                    -1 if cur_macd < 0 < prev_macd else
+                    0
+                    for cur_macd, prev_macd in
+                    zip(macd_col[1:], macd_col[:-1])]
+
+
+@jit(nopython=True, nogil=True, cache=True)
+def MACD_histogram_reversal(macd_col: list | np.ndarray, signal_col: list | np.ndarray) -> list[float | int]:
+    macdhist_col = macd_col - signal_col
+    return [0.0] * 3 + [1.0 if cur_macd > prev_macd and prev_macd < preprev_macd < prepreprev_macd else
+                        -1.0 if cur_macd < prev_macd and prev_macd > preprev_macd > prepreprev_macd else
+                        0
+                        for cur_macd, prev_macd, preprev_macd, prepreprev_macd in
+                        zip(macdhist_col[3:], macdhist_col[2:-1], macdhist_col[1:-2], macdhist_col[:-3])]
+
+
+# @feature_timeit
+@jit(nopython=True, nogil=True, cache=True)
+def MACD_histogram_reversal_signal(macdhist_col: list | np.ndarray) -> list[float | int]:
+    """
+  Calculate MACD histogram reversal signals.
+
+  Args:
+      macdhist_col (np.ndarray or List[float]): An array or list of MACD histogram values.
+
+  Returns:
+      List[float]: A list of reversal signals, where 1 represents a bullish reversal,
+      -1 represents a bearish reversal, and 0 represents no reversal.
+
+  The function calculates MACD histogram reversal signals based on the MACD histogram values provided in the input.
+  It compares the current MACD histogram value with the previous three values to determine whether a bullish
+  or bearish reversal has occurred.
+
+  Note:
+  - If cur_macd > prev_macd and prev_macd < preprev_macd < prepreprev_macd, it's a bullish reversal(returns 1).
+  - If cur_macd < prev_macd and prev_macd > preprev_macd > prepreprev_macd, it's a bearish reversal(returns -1).
+  - Otherwise, no reversal is detected (returns 0).
+
+  Example:
+  >>> macdhist_values = [0.5, 0.6, 0.4, 0.3, 0.8, 0.9, 1.0, 0.7]
+  >>> signals = MACDhist_reversal_signal(macdhist_values)
+  >>> print(signals)
+  [0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, -1.0]
+  """
+    return [0.0] * 3 + [1.0 if cur_macd > prev_macd and prev_macd < preprev_macd < prepreprev_macd else
+                        -1.0 if cur_macd < prev_macd and prev_macd > preprev_macd > prepreprev_macd else
+                        0
+                        for cur_macd, prev_macd, preprev_macd, prepreprev_macd in
+                        zip(macdhist_col[3:], macdhist_col[2:-1], macdhist_col[1:-2], macdhist_col[:-3])]
+
+
 # @feature_timeit
 @jit(nopython=True, nogil=True, cache=True)
 def MACD_cross_signal(macd_col: list | np.ndarray, signal_col: list | np.ndarray) -> list[float | int]:
@@ -431,41 +685,6 @@ def MACD_cross_signal(macd_col: list | np.ndarray, signal_col: list | np.ndarray
                     0
                     for cur_sig, cur_macd, prev_sig, prev_macd in
                     zip(signal_col[1:], macd_col[1:], signal_col[:-1], macd_col[:-1])]
-
-
-# @feature_timeit
-@jit(nopython=True, nogil=True, cache=True)
-def MACD_histogram_reversal_signal(macdhist_col: list | np.ndarray) -> list[float | int]:
-    """
-  Calculate MACD histogram reversal signals.
-
-  Args:
-      macdhist_col (np.ndarray or List[float]): An array or list of MACD histogram values.
-
-  Returns:
-      List[float]: A list of reversal signals, where 1 represents a bullish reversal,
-      -1 represents a bearish reversal, and 0 represents no reversal.
-
-  The function calculates MACD histogram reversal signals based on the MACD histogram values provided in the input.
-  It compares the current MACD histogram value with the previous three values to determine whether a bullish
-  or bearish reversal has occurred.
-
-  Note:
-  - If cur_macd > prev_macd and prev_macd < preprev_macd < prepreprev_macd, it's a bullish reversal(returns 1).
-  - If cur_macd < prev_macd and prev_macd > preprev_macd > prepreprev_macd, it's a bearish reversal(returns -1).
-  - Otherwise, no reversal is detected (returns 0).
-
-  Example:
-  >>> macdhist_values = [0.5, 0.6, 0.4, 0.3, 0.8, 0.9, 1.0, 0.7]
-  >>> signals = MACDhist_reversal_signal(macdhist_values)
-  >>> print(signals)
-  [0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, -1.0]
-  """
-    return [0.0] * 3 + [1.0 if cur_macd > prev_macd and prev_macd < preprev_macd < prepreprev_macd else
-                        -1.0 if cur_macd < prev_macd and prev_macd > preprev_macd > prepreprev_macd else
-                        0
-                        for cur_macd, prev_macd, preprev_macd, prepreprev_macd in
-                        zip(macdhist_col[3:], macdhist_col[2:-1], macdhist_col[1:-2], macdhist_col[:-3])]
 
 
 # @feature_timeit
@@ -923,10 +1142,10 @@ def get_1D_MA(close: np.ndarray, ma_type: int, ma_period: int) -> np.ndarray:
                 1: lambda c, p: talib.EMA(c, timeperiod=p),
                 2: lambda c, p: talib.WMA(c, timeperiod=p),
                 3: lambda c, p: talib.KAMA(c, timeperiod=p),
-                4: lambda c, p: talib.TRIMA(close, timeperiod=p),
-                5: lambda c, p: talib.DEMA(close, timeperiod=p),
-                6: lambda c, p: talib.TEMA(close, timeperiod=p),
-                7: lambda c, p: talib.T3(close, timeperiod=p),
+                4: lambda c, p: talib.TRIMA(c, timeperiod=p),
+                5: lambda c, p: talib.DEMA(c, timeperiod=p),
+                6: lambda c, p: talib.TEMA(c, timeperiod=p),
+                7: lambda c, p: talib.T3(c, timeperiod=p),
                 8: lambda c, p: talib.MAMA(c)[0],
                 9: lambda c, p: talib.LINEARREG(c, timeperiod=p),
                 10: lambda c, p: ti.ehma(c, p),
@@ -949,32 +1168,23 @@ def get_1D_MA(close: np.ndarray, ma_type: int, ma_period: int) -> np.ndarray:
                 25: lambda c, p: NadarayWatsonMA(c, p, kernel=5)}
     # 22: lambda np_df,period: VAMA(np_df[:,3], np_df[:,4], period),
     # 31: lambda np_df,period: VIDYA(np_df[:,3], talib.CMO(np_df[:,3], period), period)
-    return np.nan_to_num(ma_types[ma_type](close.astype(np.float64), ma_period))
+    return np.nan_to_num(ma_types[ma_type](close, int(ma_period)))
 
 
 def get_ma_from_source(np_df: np.ndarray, ma_type: int, ma_period: int, source: str) -> np.ndarray:
-    open_col = np_df[:, 0]
-    high_col = np_df[:, 1]
-    low_col = np_df[:, 2]
-    close_col = np_df[:, 3]
-
-    if source == "open":
-        s = open_col
-    elif source == "high":
-        s = high_col
-    elif source == "low":
-        s = low_col
-    elif source == "close":
-        s = close_col
-    elif source == "hl2":
-        s = (high_col + low_col) / 2
-    elif source == "hlc3":
-        s = (high_col + low_col + close_col) / 3
-    elif source == "ohlc4":
-        s = (open_col + high_col + low_col + close_col) / 4
-    elif source == "hlcc4":
-        s = (high_col + low_col + close_col + close_col) / 4
-    else:
+    column_map = {
+        "open": np_df[:, 0],
+        "high": np_df[:, 1],
+        "low": np_df[:, 2],
+        "close": np_df[:, 3],
+        "hl2": (np_df[:, 1] + np_df[:, 2]) / 2,
+        "hlc3": (np_df[:, 1] + np_df[:, 2] + np_df[:, 3]) / 3,
+        "ohlc4": (np_df[:, 0] + np_df[:, 1] + np_df[:, 2] + np_df[:, 3]) / 4,
+        "hlcc4": (np_df[:, 1] + np_df[:, 2] + np_df[:, 3] + np_df[:, 3]) / 4,
+    }
+    try:
+        s = column_map[source]
+    except KeyError:
         raise ValueError(f"Unknown MA source column: {source}")
 
     ma_types = {0: lambda ohlcv_array, period: talib.SMA(s, timeperiod=period),
@@ -1019,11 +1229,11 @@ def get_ma_from_source(np_df: np.ndarray, ma_type: int, ma_period: int, source: 
                 31: lambda ohlcv_array, period: NadarayWatsonMA(s, period, kernel=5)}
     # 22: lambda np_df,period: VAMA(np_df[:,3], np_df[:,4], period),
     # 31: lambda np_df,period: VIDYA(np_df[:,3], talib.CMO(np_df[:,3], period), period)
-    return np.nan_to_num(ma_types[ma_type](np_df.astype(np.float64), ma_period))
+    return np.nan_to_num(ma_types[ma_type](np_df, int(ma_period)))
 
 
 def any_ma_sig(np_close, np_xMA, np_ATR, atr_multi=1.0):
-    return np.divide((np_xMA - np_close), np_ATR, out=np.full_like(np_xMA, np.nan), where=np_ATR != 0) / atr_multi
+    return np.where(np_ATR != 0, (np_xMA - np_close) / (np_ATR * atr_multi), 0)
 
 
 # @feature_timeit

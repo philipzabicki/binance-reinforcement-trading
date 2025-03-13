@@ -1,4 +1,5 @@
 from datetime import datetime as dt
+from os import path
 
 import torch as th
 import torch.nn as nn
@@ -10,14 +11,14 @@ from stable_baselines3.common.vec_env import SubprocVecEnv
 from torch import cuda
 from torch.nn import functional as F
 
-from definitions import TENSORBOARD_DIR, MODELS_DIR
-from environments.spot_rl_env import DiscreteSpotTakerRL
+from definitions import TENSORBOARD_DIR, MODELS_DIR, MODELING_DATASET_DIR
+from environments.rl_spot_env import DiscreteSpotTakerRL
 from utils.data_collector import get_precalculated_dataset_by_filename
 from utils.feature_functions import *
 
 
 class CustomCNNBiLSTMAttentionFeatureExtractor(BaseFeaturesExtractor):
-    def __init__(self, observation_space: Space, features_dim: int = 256):
+    def __init__(self, observation_space: Space, features_dim: int = 390):
         super(CustomCNNBiLSTMAttentionFeatureExtractor, self).__init__(observation_space, features_dim)
         n_time_steps, n_features = observation_space.shape  # (72, 139)
         self.cnn = nn.Sequential(
@@ -63,18 +64,18 @@ def make_env(df, **env_kwargs):
     return _init
 
 
-MODELING_DATASET_FILENAME = 'BTCUSDT5m_spot_modeling_v2.csv'
+MODELING_DATASET_FILENAME = 'modeling.csv'
 DATASET_SPLIT_DATE = "2024-03-01"
-NUM_ENVS = 12
+NUM_ENVS = 6
 ENV_KWARGS = {
-    "lookback_size": 72,  # 6h obs history (5m itv)
+    "lookback_size": 24,  # 6h obs history (5m itv)
     "max_steps": 8_640,  # 30D of trading (5m itv)
     "exclude_cols_left": 5,
     "init_balance": 1_000,
     "no_action_finish": inf,
     'steps_passive_penalty': 'auto',
-    # "fee": 0.00075,
-    "fee": 0.0,
+    "fee": 0.00075,
+    # "fee": 0.0,
     "coin_step": 0.00001,
     "visualize": False,
     "render_range": 80,
@@ -100,13 +101,14 @@ if __name__ == "__main__":
     experiment_name = f"{MODELING_DATASET_FILENAME}lb{ENV_KWARGS['lookback_size']}_ms{ENV_KWARGS['max_steps']}_tt{MODEL_PARAMETERS['total_timesteps']}_DQN"
     tensorboard_log_dir = f"{TENSORBOARD_DIR}/{experiment_name}"
 
-    df_train, _ = get_precalculated_dataset_by_filename(MODELING_DATASET_FILENAME, DATASET_SPLIT_DATE)
-    del _  # save memory
-    print(f'Loaded train dataset shape: {df_train.shape}')
-
-    df_train = add_scaled_candle_patterns_indicators(df_train)
-    df_train = add_scaled_ultosc_rsi_mfi_up_to_n(df_train, 35, 1)
-    print(f'Post feature imputation train dataset shape: {df_train.shape}')
+    df_train = pd.read_csv(path.join(MODELING_DATASET_DIR, MODELING_DATASET_FILENAME))
+    # df_train, _ = get_precalculated_dataset_by_filename(MODELING_DATASET_FILENAME, DATASET_SPLIT_DATE)
+    # del _  # save memory
+    # print(f'Loaded train dataset shape: {df_train.shape}')
+    #
+    # df_train = add_scaled_candle_patterns_indicators(df_train)
+    # df_train = add_scaled_ultosc_rsi_mfi_up_to_n(df_train, 35, 1)
+    # print(f'Post feature imputation train dataset shape: {df_train.shape}')
 
     envs = SubprocVecEnv([make_env(df_train, **ENV_KWARGS) for _ in range(NUM_ENVS)])
     policy_kwargs = dict(
@@ -119,7 +121,7 @@ if __name__ == "__main__":
         "CnnPolicy",  # Polityka CNN jest kompatybilna z DQN
         envs,
         policy_kwargs=policy_kwargs,
-        buffer_size=1000,
+        # buffer_size=10,
         # buffer_size=MODEL_PARAMETERS['buffer_size'],
         # learning_starts=MODEL_PARAMETERS['learning_starts'],
         # train_freq=MODEL_PARAMETERS['train_freq'],
