@@ -45,10 +45,8 @@ if __name__ == "__main__":
     )
     print(f"df used: {df}")
 
-
     def env_creator(env_config: EnvContext):
         return SpotTakerRL(df=df, **ENV_KWARGS)
-
 
     # Rejestracja niestandardowego środowiska
     from ray.tune.registry import register_env
@@ -56,7 +54,9 @@ if __name__ == "__main__":
     register_env("spot_taker_rl", env_creator)
 
     # Konfiguracja trenera PPO
-    config = ppo.PPOConfig().environment("spot_taker_rl", env_config={}).framework("torch")
+    config = (
+        ppo.PPOConfig().environment("spot_taker_rl", env_config={}).framework("torch")
+    )
     trainer = config.build()
 
     # Trenowanie modelu
@@ -72,8 +72,8 @@ if __name__ == "__main__":
     # Wczytywanie modelu
     trainer.restore(model_full_path)
 
-    ENV_KWARGS['start_date'] = TRADE_START_DATE
-    ENV_KWARGS['end_date'] = TRADE_END_DATE
+    ENV_KWARGS["start_date"] = TRADE_START_DATE
+    ENV_KWARGS["end_date"] = TRADE_END_DATE
 
     # Testowanie modelu
     test_env = SpotTakerRL(df=df, **ENV_KWARGS)
@@ -83,7 +83,7 @@ if __name__ == "__main__":
         action = trainer.compute_single_action(obs)
         obs, reward, terminated, info = test_env.step(action)
 
-    ENV_KWARGS['visualize'] = True
+    ENV_KWARGS["visualize"] = True
     visualize_env = SpotTakerRL(df=df, **ENV_KWARGS)
     obs = visualize_env.reset()
     terminated = False

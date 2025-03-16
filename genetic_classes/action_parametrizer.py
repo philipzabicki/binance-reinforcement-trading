@@ -15,7 +15,7 @@ class SpotActionVariablesProblem(ElementwiseProblem):
             xl=-1,
             xu=1,
             vtype=int,
-            type_var=Integer
+            type_var=Integer,
         )
 
     def _evaluate(self, X, out, *args, **kwargs):

@@ -32,7 +32,7 @@ if __name__ == "__main__":
     df = candle_sizes_kde_pdf(df)
     # profiler.disable()
     # profiler.print_stats(sort='cumtime')
-    print(f'compute_probabilities_kde_separate_parallel {time() - start_t}')
+    print(f"compute_probabilities_kde_separate_parallel {time() - start_t}")
 
     df.to_csv("BTCUSDTspot_5m_modeling.csv", index=False)
     df.to_excel("BTCUSDTspot_5m_modeling.xlsx")

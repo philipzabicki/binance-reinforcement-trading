@@ -3,6 +3,7 @@ from warnings import warn
 
 import numpy as np
 from gym import spaces
+
 # from gymnasium import spaces
 from numpy import array, inf, full, float32, zeros, hstack
 
@@ -13,19 +14,25 @@ class DiscreteSpotTakerRL(SpotBacktest):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         trade_obs_space = 6  # ones like current pnl, current qty etc. (trade_data)
-        self.lookback_size = kwargs['lookback_size']
+        self.lookback_size = kwargs["lookback_size"]
         # As default, don't use ohlcv values from dataframe as features/obs space
         if self.exclude_cols_left < 5:
             warn(
                 f"OHLCV values are not excluded from features/observation space (exclude_cols_left={self.exclude_cols_left})"
             )
-        self.obs_space_dims = len(self.df[0, self.exclude_cols_left:]) + trade_obs_space
+        self.obs_space_dims = (
+            len(self.df[0, self.exclude_cols_left :]) + trade_obs_space
+        )
         obs_lower_bounds = full((self.lookback_size, self.obs_space_dims), -inf)
         obs_upper_bounds = full((self.lookback_size, self.obs_space_dims), inf)
-        self.observation_space = spaces.Box(low=obs_lower_bounds, high=obs_upper_bounds, dtype=float32)
+        self.observation_space = spaces.Box(
+            low=obs_lower_bounds, high=obs_upper_bounds, dtype=float32
+        )
         self.action_space = spaces.Discrete(3)
-        self.lookback = deque([zeros(self.obs_space_dims).copy() for _ in range(self.lookback_size)],
-                              maxlen=self.lookback_size)
+        self.lookback = deque(
+            [zeros(self.obs_space_dims).copy() for _ in range(self.lookback_size)],
+            maxlen=self.lookback_size,
+        )
         print(f"    observation_space: {self.observation_space}")
         print(f"    action_space: {self.action_space}")
 
@@ -53,13 +60,18 @@ class DiscreteSpotTakerRL(SpotBacktest):
             self.qty,
             (_full_bal / self.init_balance) - 1,
             self.in_position,
-            self.in_position_counter / self.max_steps if self.max_steps > 0 else self.in_position_counter /
-                                                                                 self.df.shape[0],
+            (
+                self.in_position_counter / self.max_steps
+                if self.max_steps > 0
+                else self.in_position_counter / self.df.shape[0]
+            ),
             min(self.passive_counter / self.steps_passive_penalty, 1),
-            self.pnl
+            self.pnl,
         ]
-        self.lookback = deque([zeros(self.obs_space_dims) for _ in range(self.lookback_size)],
-                              maxlen=self.lookback_size)
+        self.lookback = deque(
+            [zeros(self.obs_space_dims) for _ in range(self.lookback_size)],
+            maxlen=self.lookback_size,
+        )
         self.lookback.append(hstack((first_obs, self.trade_data)))
         # return hstack((first_obs, self.trade_data)), self.info
         return array(self.lookback)
@@ -71,10 +83,13 @@ class DiscreteSpotTakerRL(SpotBacktest):
             self.qty,
             (_full_bal / self.init_balance) - 1,
             self.in_position,
-            self.in_position_counter / self.max_steps if self.max_steps > 0 else self.in_position_counter /
-                                                                                 self.df.shape[0],
+            (
+                self.in_position_counter / self.max_steps
+                if self.max_steps > 0
+                else self.in_position_counter / self.df.shape[0]
+            ),
             min(self.passive_counter / self.steps_passive_penalty, 1),
-            self.pnl
+            self.pnl,
         ]
         # if isnan(self.trade_data).any():
         #     raise ValueError(f"NaNs in trade_data {self.trade_data}")
@@ -90,8 +105,12 @@ class DiscreteSpotTakerRL(SpotBacktest):
             current_close = self.df[self.current_step, 3]
             start = max(0, self.current_step - self.lookback_size)
             end = min(len(self.df), self.current_step + self.lookback_size)
-            local_max = np.max(self.df[start:end, 1])  # highest High price in local steps range
-            local_min = np.min(self.df[start:end, 2])  # lowest Low price in local steps range
+            local_max = np.max(
+                self.df[start:end, 1]
+            )  # highest High price in local steps range
+            local_min = np.min(
+                self.df[start:end, 2]
+            )  # lowest Low price in local steps range
             max_min_diff = local_max - local_min
             if self.absolute_profit > 0:
                 peak_scaling = 1 - (abs(current_close - local_max) / max_min_diff)
@@ -100,7 +119,9 @@ class DiscreteSpotTakerRL(SpotBacktest):
                 peak_scaling = 1 - (abs(current_close - local_min) / max_min_diff)
                 self.reward = relative_profit + relative_profit * min(peak_scaling, 1)
             self.position_closed, self.cum_pnl = 0, 0
-        elif self.passive_penalty and (self.passive_counter > self.steps_passive_penalty):
+        elif self.passive_penalty and (
+            self.passive_counter > self.steps_passive_penalty
+        ):
             self.reward -= 0.05
         else:
             self.reward = 0

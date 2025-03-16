@@ -22,27 +22,15 @@ from pymoo.core.mixed import (
 from pymoo.core.problem import StarmapParallelization
 from pymoo.optimize import minimize
 from pymoo.termination.default import DefaultMultiObjectiveTermination
+from talib import AD
 
 from common import save_checkpoint, load_checkpoint
 from definitions import REPORT_DIR
-from genetic_classes.feature_action_fitter import StochasticOscillatorFitting
-from utils.feature_generation import ohlcv_initializer, custom_StochasticOscillator
+from genetic_classes.feature_action_fitter import ChaikinOscillatorFitting
+from utils.feature_generation import adl_initializer, custom_ChaikinOscillator
 
 # from utils.miscellaneous import convert_variables
-from utils.ta_tools import extract_segments_indices
-from utils.ta_tools import (
-    k_int_cross,
-    k_ext_cross,
-    d_int_cross,
-    d_ext_cross,
-    k_cross_int_os_ext_ob,
-    k_cross_ext_os_int_ob,
-    d_cross_int_os_ext_ob,
-    d_cross_ext_os_int_ob,
-    kd_cross,
-    kd_cross_inside,
-    kd_cross_outside,
-)
+from utils.ta_tools import extract_segments_indices, ChaikinOscillator_signal
 
 CPU_CORES_COUNT = 20
 print(f"CPUs used: {CPU_CORES_COUNT}")
@@ -51,7 +39,7 @@ TERMINATION = DefaultMultiObjectiveTermination(
     ftol=0.001, period=5, n_max_gen=100, n_max_evals=1_000_000
 )
 
-PROBLEM = StochasticOscillatorFitting
+PROBLEM = ChaikinOscillatorFitting
 ALGORITHM = MixedVariableGA
 POP_SIZE = 8192
 MAX_ITERATIONS = 35
@@ -60,16 +48,17 @@ RESULTS_DIR = os.path.join(REPORT_DIR, "feature_fits")
 ACTIONS_FULLPATH = os.path.join(
     REPORT_DIR, "optimal_actions", "final_combined_actions.csv"
 )
-CHECKPOINT_FILE = os.path.join(RESULTS_DIR, "StochOsc_checkpoint.pkl")
+CHECKPOINT_FILE = os.path.join(RESULTS_DIR, "ChaikinOsc_checkpoint.pkl")
 
 
 def pool_initializer(np_df):
-    ohlcv_initializer(np_df)
+    adl_initializer(np_df)
 
 
 def main(max_iterations=10):
     df = pd.read_csv(ACTIONS_FULLPATH)
     np_df = df.to_numpy()[:, 1:6].astype(float)
+    ADL = AD(*np_df[:, 1:5].T)
     target_actions = df["Action"].values
 
     os.makedirs(RESULTS_DIR, exist_ok=True)
@@ -116,38 +105,15 @@ def main(max_iterations=10):
             )
             best_params = res.X
 
-            slowK, slowD = custom_StochasticOscillator(
-                np_df,
-                fastK_period=best_params["fastK_period"],
-                slowK_period=best_params["slowK_period"],
-                slowD_period=best_params["slowD_period"],
-                slowK_ma_type=best_params["slowK_ma_type"],
-                slowD_ma_type=best_params["slowD_ma_type"],
+            chaikin_oscillator = custom_ChaikinOscillator(
+                ADL,
+                fast_ma_type=best_params["fast_ma_type"],
+                fast_period=best_params["fast_period"],
+                slow_ma_type=best_params["slow_ma_type"],
+                slow_period=best_params["slow_period"],
             )
 
-            signal_func_mapping = {
-                "k_int_cross": k_int_cross,
-                "k_ext_cross": k_ext_cross,
-                "d_int_cross": d_int_cross,
-                "d_ext_cross": d_ext_cross,
-                "k_cross_int_os_ext_ob": k_cross_int_os_ext_ob,
-                "k_cross_ext_os_int_ob": k_cross_ext_os_int_ob,
-                "d_cross_int_os_ext_ob": d_cross_int_os_ext_ob,
-                "d_cross_ext_os_int_ob": d_cross_ext_os_int_ob,
-                "kd_cross": kd_cross,
-                "kd_cross_inside": kd_cross_inside,
-                "kd_cross_outside": kd_cross_outside,
-            }
-
-            func = signal_func_mapping[best_params["signal_type"]]
-            signals = np.array(
-                func(
-                    k_line=slowK,
-                    d_line=slowD,
-                    oversold_threshold=best_params["oversold_threshold"],
-                    overbought_threshold=best_params["overbought_threshold"],
-                )
-            )
+            signals = np.array(ChaikinOscillator_signal(chaikin_oscillator))
             gen_segments = extract_segments_indices(signals)
 
             gen_segments_set = {tuple(seg) for seg in gen_segments}
@@ -182,7 +148,7 @@ def main(max_iterations=10):
                 break
 
         output_file = os.path.join(
-            RESULTS_DIR, f"stoch_osc_pop{POP_SIZE}_iters{MAX_ITERATIONS}.csv"
+            RESULTS_DIR, f"by_match_chaikin_osc_pop{POP_SIZE}_iters{MAX_ITERATIONS}.csv"
         )
         pd.DataFrame(all_results).to_csv(output_file, index=False)
         print("All results saved.")

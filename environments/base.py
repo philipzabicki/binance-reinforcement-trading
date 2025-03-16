@@ -18,37 +18,35 @@ from utils.visualize import TradingGraph
 
 class SpotBacktest(Env):
     def __init__(
-            self,
-            df,
-            start_date="",
-            end_date="",
-            max_steps=0,
-            exclude_cols_left=1,
-            no_action_finish=2_880,
-            steps_passive_penalty=0,
-            init_balance=1_000,
-            position_ratio=1.0,
-            save_ratio=None,
-            stop_loss=None,
-            take_profit=None,
-            fee=0.0002,
-            coin_step=0.001,
-            slippage=None,
-            slipp_std=0,
-            visualize=False,
-            render_range=120,
-            verbose=True,
-            report_to_file=False,
-            *args,
-            **kwargs,
+        self,
+        df,
+        start_date="",
+        end_date="",
+        max_steps=0,
+        exclude_cols_left=1,
+        no_action_finish=2_880,
+        steps_passive_penalty=0,
+        init_balance=1_000,
+        position_ratio=1.0,
+        save_ratio=None,
+        stop_loss=None,
+        take_profit=None,
+        fee=0.0002,
+        coin_step=0.001,
+        slippage=None,
+        slipp_std=0,
+        visualize=False,
+        render_range=120,
+        verbose=True,
+        report_to_file=False,
+        *args,
+        **kwargs,
     ):
         # Configure logging for this instance
         logging.basicConfig(
             level=logging.WARNING,
-            format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
-            handlers=[
-                logging.StreamHandler(stdout)
-            ]
+            format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+            handlers=[logging.StreamHandler(stdout)],
         )
         self.logger = logging.getLogger(__name__)
 
@@ -85,29 +83,35 @@ class SpotBacktest(Env):
         if self.df_input.isnull().values.any():
             nan_counts = self.df_input.isnull().sum()
             nan_columns = nan_counts[nan_counts > 0].index.tolist()
-            raise ValueError(f"Input dataframe contains NaN values in columns: {nan_columns}")
+            raise ValueError(
+                f"Input dataframe contains NaN values in columns: {nan_columns}"
+            )
 
-        self.dates = to_datetime(self.df_input['Opened'])
+        self.dates = to_datetime(self.df_input["Opened"])
         self.df = ascontiguousarray(
-            self.df_input.drop(columns=['Opened']).to_numpy(dtype=float32)
+            self.df_input.drop(columns=["Opened"]).to_numpy(dtype=float32)
         )
         self.df_features = self.df_input.columns.tolist()
 
         if self.start_date != "" and self.end_date != "":
             start_date_dt = to_datetime(self.start_date)
             end_date_dt = to_datetime(self.end_date)
-            self.logger.debug(f'Types of start_date {type(start_date_dt)} end_date {type(end_date_dt)}')
-            self.logger.debug(f'Dates dtype {self.dates.dtype}')
+            self.logger.debug(
+                f"Types of start_date {type(start_date_dt)} end_date {type(end_date_dt)}"
+            )
+            self.logger.debug(f"Dates dtype {self.dates.dtype}")
             self.start_index = searchsorted(self.dates, start_date_dt, side="left")
             self.end_index = searchsorted(self.dates, end_date_dt, side="right") - 1
         else:
             self.start_index = 0
             self.end_index = self.dates.shape[0] - 1
 
-        trade_range_size = self.df[self.start_index:self.end_index, :].shape[0]
+        trade_range_size = self.df[self.start_index : self.end_index, :].shape[0]
         self.trade_range_size = trade_range_size
         if trade_range_size < self.max_steps:
-            raise ValueError("max_steps is larger than the number of rows in the dataframe")
+            raise ValueError(
+                "max_steps is larger than the number of rows in the dataframe"
+            )
 
     def _initialize_parameters(self):
         if self.verbose:
@@ -120,14 +124,24 @@ class SpotBacktest(Env):
             self.logger.info(f"no_action_finish: {self.no_action_finish}")
             self.logger.info(f"Sample df row: {self.df[-1, self.exclude_cols_left:]}")
             self.logger.info(f"Slippage statistics (avg, stddev): {self.slippage}")
-            self.logger.info(f"init_balance: {self.init_balance}, position_ratio: {self.position_ratio}")
             self.logger.info(
-                f"save_ratio: {self.save_ratio}, stop_loss: {self.stop_loss}, take_profit: {self.take_profit}")
+                f"init_balance: {self.init_balance}, position_ratio: {self.position_ratio}"
+            )
+            self.logger.info(
+                f"save_ratio: {self.save_ratio}, stop_loss: {self.stop_loss}, take_profit: {self.take_profit}"
+            )
 
         if self.slippage is not None:
-            self.buy_factor = self.slippage["buy"][0] + self.slippage["buy"][1] * self.slipp_std
-            self.sell_factor = self.slippage["sell"][0] - self.slippage["sell"][1] * self.slipp_std
-            self.stop_loss_factor = self.slippage["stop_loss"][0] - self.slippage["stop_loss"][1] * self.slipp_std
+            self.buy_factor = (
+                self.slippage["buy"][0] + self.slippage["buy"][1] * self.slipp_std
+            )
+            self.sell_factor = (
+                self.slippage["sell"][0] - self.slippage["sell"][1] * self.slipp_std
+            )
+            self.stop_loss_factor = (
+                self.slippage["stop_loss"][0]
+                - self.slippage["stop_loss"][1] * self.slipp_std
+            )
             self.take_profit_factor = 1.0  # To be updated if needed
         else:
             self.buy_factor = 1.0
@@ -138,7 +152,7 @@ class SpotBacktest(Env):
         self.save_balance = 0.0
         self.cum_pnl = 0.0
         self.total_steps = len(self.df)
-        if self.steps_passive_penalty == 'auto':
+        if self.steps_passive_penalty == "auto":
             self.steps_passive_penalty = int(sqrt(self.max_steps))
             self.passive_penalty = True
         elif self.steps_passive_penalty > 0:
@@ -171,12 +185,12 @@ class SpotBacktest(Env):
     def _setup_reporting(self):
         if self.report_to_file:
             self.filename = f'{REPORT_DIR}/envs/EP_{self.__class__.__name__}_{dt.now().strftime("%Y-%m-%d_%H-%M")}.csv'
-            self.report_file = open(self.filename, 'w', newline='')
+            self.report_file = open(self.filename, "w", newline="")
             self.report_writer = writer(self.report_file)
             self.report_writer.writerow(self._get_report_header())
             if self.verbose:
-                self.logger.info(f'Environment will report to file: {self.filename}')
-                self.logger.debug(f'File header: {self._get_report_header()}')
+                self.logger.info(f"Environment will report to file: {self.filename}")
+                self.logger.debug(f"File header: {self._get_report_header()}")
 
     def _get_report_header(self):
         return self.df_features + [
@@ -203,7 +217,7 @@ class SpotBacktest(Env):
             self.balance,
             self.save_balance,
             self.absolute_profit / self.position_size,
-            self.cumulative_fees
+            self.cumulative_fees,
         ]
 
     def _report_to_file(self):
@@ -218,7 +232,7 @@ class SpotBacktest(Env):
             self.visualization = TradingGraph(self.render_range, self.time_step)
         if self.report_to_file:
             self.filename = f'{REPORT_DIR}/envs/EP_{self.__class__.__name__}_{str(dt.today()).replace(":", "-")[:-3]}.csv'
-            self.report_file = open(self.filename, 'w', newline='')
+            self.report_file = open(self.filename, "w", newline="")
             self.report_writer = writer(self.report_file)
             self.report_writer.writerow(self._get_report_header())
         self.last_order_type = ""
@@ -238,7 +252,12 @@ class SpotBacktest(Env):
             0,
             0,
         )
-        self.in_position, self.in_position_counter, self.position_closed, self.passive_counter = 0, 0, 0, 0
+        (
+            self.in_position,
+            self.in_position_counter,
+            self.position_closed,
+            self.passive_counter,
+        ) = (0, 0, 0, 0)
         self.episode_orders, self.with_gain_c = 0, 1
         self.good_trades_count, self.bad_trades_count = 1, 1
         self.max_drawdown, self.max_profit = 0, 0
@@ -253,7 +272,7 @@ class SpotBacktest(Env):
             self.end_step = self.end_index
         self.current_step = self.start_step
         self.obs = iter(
-            self.df[self.start_step: self.end_step, self.exclude_cols_left:]
+            self.df[self.start_step : self.end_step, self.exclude_cols_left :]
         )
         # return self.df[self.current_step, self.exclude_cols_left:]
         return next(self.obs)
@@ -261,9 +280,11 @@ class SpotBacktest(Env):
     def _get_full_balance(self):
         if self.in_position:
             _pnl = self.df[self.current_step, 3] / self.enter_price - 1
-            return self.balance + (
-                    self.position_size + (self.position_size * _pnl)
-            ) + self.save_balance
+            return (
+                self.balance
+                + (self.position_size + (self.position_size * _pnl))
+                + self.save_balance
+            )
         else:
             return self.balance + self.save_balance
 
@@ -364,7 +385,7 @@ class SpotBacktest(Env):
         except StopIteration:
             self.current_step -= 1
             self._finish_episode()
-            return self.df[self.current_step, self.exclude_cols_left:]
+            return self.df[self.current_step, self.exclude_cols_left :]
 
     def step(self, action):
         self.last_order_type = ""
@@ -394,7 +415,7 @@ class SpotBacktest(Env):
             self._buy(close)
             self.pnl = (close / self.enter_price) - 1
         elif (not self.episode_orders) and (
-                (self.current_step - self.start_step) > self.no_action_finish
+            (self.current_step - self.start_step) > self.no_action_finish
         ):
             self._finish_episode()
         else:
@@ -449,10 +470,10 @@ class SpotBacktest(Env):
             slope_indicator = 1.000
             steps = self.max_steps if self.max_steps > 0 else self.total_steps
             in_gain_indicator = self.with_gain_c / (
-                    steps
-                    - self.profit_hold_counter
-                    - self.loss_hold_counter
-                    - self.episode_orders
+                steps
+                - self.profit_hold_counter
+                - self.loss_hold_counter
+                - self.episode_orders
             )
             # if above_free > 0:
             #     if hasattr(self, "leverage"):
@@ -691,8 +712,8 @@ class FuturesBacktest(SpotBacktest):
         # https://www.binance.com/en/support/faq/how-to-calculate-liquidation-price-of-usd%E2%93%A2-m-futures-contracts-b3c689c1f50a44cabb3a84e663b81d93
         # 1,25% liquidation clearance fee https://www.binance.com/en/futures/trading-rules/perpetual/
         self.liquidation_price = (
-                                         self.margin * (1 - 0.0125) - self.qty * self.enter_price
-                                 ) / (abs(self.qty) * self.POSITION_TIER[self.tier][1] - self.qty)
+            self.margin * (1 - 0.0125) - self.qty * self.enter_price
+        ) / (abs(self.qty) * self.POSITION_TIER[self.tier][1] - self.qty)
         # print(f'OPENED {side} price:{price} adj_price:{adj_price} qty:{self.qty} margin:{self.margin} fee:{fee}')
         # sleep(10)
 
@@ -731,8 +752,8 @@ class FuturesBacktest(SpotBacktest):
             self.liquidation_losses -= self.margin
         else:
             unrealized_PNL = (
-                                     abs(self.qty) * self.enter_price / self.leverage
-                             ) * self._get_pnl(adj_price)
+                abs(self.qty) * self.enter_price / self.leverage
+            ) * self._get_pnl(adj_price)
             margin_balance = self.margin + unrealized_PNL - _fee
         self.cumulative_fees -= _fee
         self.balance += margin_balance
@@ -788,13 +809,13 @@ class FuturesBacktest(SpotBacktest):
                 self.liquidations += 1
                 self._close_position(mark_close, liquidated=True)
             elif (self.stop_loss is not None) and (
-                    ((low <= self.stop_loss_price) and (self.qty > 0))
-                    or ((high >= self.stop_loss_price) and (self.qty < 0))
+                ((low <= self.stop_loss_price) and (self.qty > 0))
+                or ((high >= self.stop_loss_price) and (self.qty < 0))
             ):
                 self._close_position(self.stop_loss_price, sl=True)
             elif (self.take_profit is not None) and (
-                    ((high >= self.take_profit_price) and (self.qty > 0))
-                    or ((low <= self.take_profit_price) and (self.qty < 0))
+                ((high >= self.take_profit_price) and (self.qty > 0))
+                or ((low <= self.take_profit_price) and (self.qty < 0))
             ):
                 self._close_position(self.take_profit_price, tp=True)
             elif (action == 1 and self.qty < 0) or (action == 2 and self.qty > 0):

@@ -11,7 +11,7 @@ class TradingGraph:
     # Date, Open, High, Low, Close, Volume, net_worth, trades
     # call render every step
     def __init__(
-            self, render_range, time_step=1 / 24, Show_reward=True, Show_indicators=False
+        self, render_range, time_step=1 / 24, Show_reward=True, Show_indicators=False
     ):
         self.render_queue = deque(maxlen=render_range)
         self.render_arr = array(self.render_queue)
@@ -175,11 +175,11 @@ class TradingGraph:
 
             x_position = self.render_arr[i, 0]
             if (
-                    self.trades_arr[i, 0] == "open_long"
-                    or self.trades_arr[i, 0] == "close_short"
-                    or self.trades_arr[i, 0] == "take_profit_short"
+                self.trades_arr[i, 0] == "open_long"
+                or self.trades_arr[i, 0] == "close_short"
+                or self.trades_arr[i, 0] == "take_profit_short"
             ):
-                low_pos = self.render_arr[i, 3] * .9999
+                low_pos = self.render_arr[i, 3] * 0.9999
                 self.ax1.scatter(
                     x_position,
                     low_pos,
@@ -198,9 +198,9 @@ class TradingGraph:
                     size=self.render_range * ANNOT_TEXT_SIZE_MULTI,
                 )
             elif (
-                    self.trades_arr[i, 0] == "open_short"
-                    or self.trades_arr[i, 0] == "close_long"
-                    or self.trades_arr[i, 0] == "take_profit_long"
+                self.trades_arr[i, 0] == "open_short"
+                or self.trades_arr[i, 0] == "close_long"
+                or self.trades_arr[i, 0] == "take_profit_long"
             ):
                 high_pos = self.render_arr[i, 2] * 1.0001
                 self.ax1.scatter(
@@ -221,7 +221,7 @@ class TradingGraph:
                     size=self.render_range * ANNOT_TEXT_SIZE_MULTI,
                 )
             elif self.trades_arr[i, 0] == "stop_loss_long":
-                low_pos = self.render_arr[i, 3] * .9999
+                low_pos = self.render_arr[i, 3] * 0.9999
                 self.ax1.scatter(
                     x_position,
                     low_pos,
@@ -259,7 +259,7 @@ class TradingGraph:
                     size=self.render_range * ANNOT_TEXT_SIZE_MULTI,
                 )
             elif self.trades_arr[i, 0] == "liquidate_long":
-                low_pos = self.render_arr[i, 3] * .9999
+                low_pos = self.render_arr[i, 3] * 0.9999
                 self.ax1.scatter(
                     x_position,
                     low_pos,

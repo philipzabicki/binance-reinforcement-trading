@@ -2,6 +2,7 @@ from warnings import warn
 
 import numpy as np
 from gym import spaces
+
 # from gymnasium import spaces
 from numpy import array, inf
 
@@ -18,7 +19,7 @@ class FuturesTakerRL(FuturesBacktest):
             warn(
                 f"ohlcv values are not excluded from features/observation space (exclude_cols_left={self.exclude_cols_left})"
             )
-        obs_space_dims = len(self.df[0, self.exclude_cols_left:]) + other_obs_count
+        obs_space_dims = len(self.df[0, self.exclude_cols_left :]) + other_obs_count
         obs_lower_bounds = array([-inf for _ in range(obs_space_dims)])
         obs_upper_bounds = array([inf for _ in range(obs_space_dims)])
         self.observation_space = spaces.Box(low=obs_lower_bounds, high=obs_upper_bounds)
@@ -53,7 +54,7 @@ class FuturesTakerRL(FuturesBacktest):
         except StopIteration:
             self.current_step -= 1
             self._finish_episode()
-            df_features = self.df[self.current_step, self.exclude_cols_left:]
+            df_features = self.df[self.current_step, self.exclude_cols_left :]
         dist_to_liq = (
             self.df_mark[self.current_step, 3] - self.enter_price
             if self.in_position
@@ -92,11 +93,11 @@ class FuturesTakerRL(FuturesBacktest):
             last_pnl = self.PLs_and_ratios[-1][0]
             if last_pnl > 0:
                 self.reward = last_pnl * (
-                        self.good_trades_count / self.bad_trades_count
+                    self.good_trades_count / self.bad_trades_count
                 )
             elif last_pnl < 0:
                 self.reward = last_pnl * (
-                        self.bad_trades_count / self.good_trades_count
+                    self.bad_trades_count / self.good_trades_count
                 )
             self.position_closed = 0
         # In Position #

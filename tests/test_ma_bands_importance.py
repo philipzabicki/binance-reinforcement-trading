@@ -27,14 +27,16 @@ if __name__ == "__main__":
     )
     print(df.shape)
     print(df.describe())
-    df = keltner_channels_custom_mas(df,
-                                     [5, 7, 10, 15, 20, 25, 35, 50, 75, 100],
-                                     [5, 7, 8, 10, 13, 15, 20, 25, 30, 40, 50],
-                                     [1.])
+    df = keltner_channels_custom_mas(
+        df,
+        [5, 7, 10, 15, 20, 25, 35, 50, 75, 100],
+        [5, 7, 8, 10, 13, 15, 20, 25, 30, 40, 50],
+        [1.0],
+    )
     df = df.iloc[:, 6:]
     print(df.shape)
     print(df.describe())
-    print(f'NaNs: {df.isna().sum().sum()}')
+    print(f"NaNs: {df.isna().sum().sum()}")
 
     # 1. Progowanie Wariancji
     # Ustawiamy próg wariancji (możesz zmniejszyć próg, aby zachować więcej cech)
@@ -59,7 +61,9 @@ if __name__ == "__main__":
 
     # Znajdujemy cechy o korelacji powyżej progu (możesz zwiększyć próg, aby zachować więcej cech)
     correlation_threshold = 0.99  # Zwiększamy próg do 0.99
-    to_drop = [column for column in upper.columns if any(upper[column] > correlation_threshold)]
+    to_drop = [
+        column for column in upper.columns if any(upper[column] > correlation_threshold)
+    ]
 
     # Usuwamy silnie skorelowane cechy
     df_uncorr = df_var.drop(columns=to_drop)
@@ -76,10 +80,10 @@ if __name__ == "__main__":
 
     # 4. Hierarchiczne Klasteryzowanie Cech
     # Obliczamy odległości korelacyjne między cechami
-    distance_matrix = pdist(df_uncorr.T, metric='correlation')
+    distance_matrix = pdist(df_uncorr.T, metric="correlation")
 
     # Wykonujemy klasteryzację hierarchiczną
-    linked = linkage(distance_matrix, method='ward')
+    linked = linkage(distance_matrix, method="ward")
 
     # Ustalamy liczbę klastrów (możesz zwiększyć procent, aby uzyskać więcej cech)
     num_features = df_uncorr.shape[1]
@@ -88,7 +92,7 @@ if __name__ == "__main__":
     if num_clusters < 1:
         num_clusters = 1  # Zapewniamy co najmniej jeden klaster
 
-    labels = fcluster(linked, num_clusters, criterion='maxclust')
+    labels = fcluster(linked, num_clusters, criterion="maxclust")
 
     # Wybieramy reprezentatywne cechy z każdego klastra
     selected_features = []
@@ -111,16 +115,18 @@ if __name__ == "__main__":
 
     # Wyrażenie regularne do dopasowania liczby przed "MAp", po "p" oraz po "atr_p"
     for item in selected_features:
-        before_map_match = re.search(r'(\d+)MAp', item)
-        p_match = re.search(r'p(\d+)', item)
-        atr_p_match = re.search(r'atr_p(\d+)', item)
+        before_map_match = re.search(r"(\d+)MAp", item)
+        p_match = re.search(r"p(\d+)", item)
+        atr_p_match = re.search(r"atr_p(\d+)", item)
 
         # Sprawdzenie, czy znaleziono dopasowania i dodanie do krotki jako int
         if before_map_match and p_match and atr_p_match:
-            result_tuples.append((
-                int(before_map_match.group(1)),
-                int(p_match.group(1)),
-                int(atr_p_match.group(1))
-            ))
+            result_tuples.append(
+                (
+                    int(before_map_match.group(1)),
+                    int(p_match.group(1)),
+                    int(atr_p_match.group(1)),
+                )
+            )
 
     print("Wynik:", result_tuples)

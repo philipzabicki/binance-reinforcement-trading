@@ -13,21 +13,25 @@ from utils.feature_generation import (
     custom_keltner_channel_signal,
 )
 from utils.get_data import by_BinanceVision
-from utils.ta_tools import (StochasticOscillator_threshold_cross_signal,
-                            StochasticOscillator_threshold_signal,
-                            StochasticOscillator_mid_cross_signal,
-                            MACD_cross_signal,
-                            MACD_zero_cross_signal,
-                            MACD_histogram_reversal_signal,
-                            ChaikinOscillator_signal)
+from utils.ta_tools import (
+    StochasticOscillator_threshold_cross_signal,
+    StochasticOscillator_threshold_signal,
+    StochasticOscillator_mid_cross_signal,
+    MACD_cross_signal,
+    MACD_zero_cross_signal,
+    MACD_histogram_reversal_signal,
+    ChaikinOscillator_signal,
+)
 
-TICKER = 'BTCUSDT'
-ITV = '1h'
-MARKET_TYPE = 'spot'
-DATA_TYPE = 'klines'
+TICKER = "BTCUSDT"
+ITV = "1h"
+MARKET_TYPE = "spot"
+DATA_TYPE = "klines"
 
 
-def process_indicator_file(file_path, indicator_func, params_mapping, indicator_name_prefix):
+def process_indicator_file(
+    file_path, indicator_func, params_mapping, indicator_name_prefix
+):
     """
     file_path: path to the CSV file with indicator parameters
     indicator_func: function that calculates the oscillator
@@ -43,16 +47,24 @@ def process_indicator_file(file_path, indicator_func, params_mapping, indicator_
             slowK, slowD = indicator_func(ohlcv, *osc_params)
             if "mid" in indicator_name_prefix:
                 # Oczekujemy kolumny 'mid_level' w CSV
-                signals = StochasticOscillator_mid_cross_signal(slowK, slowD, mid_level=row['mid_level'])
+                signals = StochasticOscillator_mid_cross_signal(
+                    slowK, slowD, mid_level=row["mid_level"]
+                )
             elif "threshold" in indicator_name_prefix:
-                signals = StochasticOscillator_threshold_signal(slowK, slowD,
-                                                                oversold_threshold=row['oversold_threshold'],
-                                                                overbought_threshold=row['overbought_threshold'])
+                signals = StochasticOscillator_threshold_signal(
+                    slowK,
+                    slowD,
+                    oversold_threshold=row["oversold_threshold"],
+                    overbought_threshold=row["overbought_threshold"],
+                )
             else:
                 # Domyślnie traktujemy jako "cross" (czyli threshold_cross)
-                signals = StochasticOscillator_threshold_cross_signal(slowK, slowD,
-                                                                      oversold_threshold=row['oversold_threshold'],
-                                                                      overbought_threshold=row['overbought_threshold'])
+                signals = StochasticOscillator_threshold_cross_signal(
+                    slowK,
+                    slowD,
+                    oversold_threshold=row["oversold_threshold"],
+                    overbought_threshold=row["overbought_threshold"],
+                )
             df[f"{indicator_name_prefix}_signal_{idx}"] = signals
 
         # Proces dla Chaikin Oscillator
@@ -90,16 +102,18 @@ if __name__ == "__main__":
         interval=ITV,
         market_type=MARKET_TYPE,
         data_type=DATA_TYPE,
-        start_date='2018-01-01 00:00:00',
-        end_date='2025-01-01 00:00:00',
+        start_date="2018-01-01 00:00:00",
+        end_date="2025-01-01 00:00:00",
         split=False,
-        delay=1_000_000
+        delay=1_000_000,
     )
     # Zakładamy, że DataFrame zawiera kolumny: open, high, low, close, volume
-    ohlcv = df[['Open', 'High', 'Low', 'Close', 'Volume']].to_numpy()
+    ohlcv = df[["Open", "High", "Low", "Close", "Volume"]].to_numpy()
 
     # Obliczenie ADL i TRANGE – potrzebne do Chaikina oraz Keltnera
-    adl = AD(df['High'].values, df['Low'].values, df['Close'].values, df['Volume'].values)
+    adl = AD(
+        df["High"].values, df["Low"].values, df["Close"].values, df["Volume"].values
+    )
     trange = TRANGE(*ohlcv[:, 1:4].T.astype(float))
 
     base_folder = r"reports\feature_fits"
@@ -110,30 +124,52 @@ if __name__ == "__main__":
         file_path=chaikin_file,
         indicator_func=custom_ChaikinOscillator,
         params_mapping=["fast_period", "slow_period", "fast_ma_type", "slow_ma_type"],
-        indicator_name_prefix="chaikin"
+        indicator_name_prefix="chaikin",
     )
 
     # Przetwarzanie plików MACD – uwzględniamy wszystkie typy sygnałów
-    macd_files = ["macd_cross.csv", "macd_zero_cross.csv", "macd_histogram_reversal.csv"]
+    macd_files = [
+        "macd_cross.csv",
+        "macd_zero_cross.csv",
+        "macd_histogram_reversal.csv",
+    ]
     for macd_file_name in macd_files:
         macd_file = os.path.join(base_folder, macd_file_name)
         process_indicator_file(
             file_path=macd_file,
             indicator_func=custom_MACD,
-            params_mapping=["fast_source", "slow_source", "fast_period", "slow_period", "signal_period",
-                            "fast_ma_type", "slow_ma_type", "signal_ma_type"],
-            indicator_name_prefix=os.path.splitext(macd_file_name)[0]
+            params_mapping=[
+                "fast_source",
+                "slow_source",
+                "fast_period",
+                "slow_period",
+                "signal_period",
+                "fast_ma_type",
+                "slow_ma_type",
+                "signal_ma_type",
+            ],
+            indicator_name_prefix=os.path.splitext(macd_file_name)[0],
         )
 
     # Przetwarzanie plików Stochastic Oscillator – również mamy kilka wariantów
-    stoch_files = ["stoch_osc_cross.csv", "stoch_osc_mid_cross.csv", "stoch_osc_threshold.csv"]
+    stoch_files = [
+        "stoch_osc_cross.csv",
+        "stoch_osc_mid_cross.csv",
+        "stoch_osc_threshold.csv",
+    ]
     for stoch_file_name in stoch_files:
         stoch_file = os.path.join(base_folder, stoch_file_name)
         process_indicator_file(
             file_path=stoch_file,
             indicator_func=custom_StochasticOscillator,
-            params_mapping=["fastK_period", "slowK_period", "slowD_period", "slowK_ma_type", "slowD_ma_type"],
-            indicator_name_prefix=os.path.splitext(stoch_file_name)[0]
+            params_mapping=[
+                "fastK_period",
+                "slowK_period",
+                "slowD_period",
+                "slowK_ma_type",
+                "slowD_ma_type",
+            ],
+            indicator_name_prefix=os.path.splitext(stoch_file_name)[0],
         )
 
     # Przetwarzanie plików dla Keltner – pliki znajdują się w podfolderze "ma_band_action_fits"
@@ -143,9 +179,16 @@ if __name__ == "__main__":
         process_indicator_file(
             file_path=file,
             indicator_func=custom_keltner_channel_signal,
-            params_mapping=["ma_type", "ma_period", "atr_ma_type", "atr_period", "atr_multi", "source"],
-            indicator_name_prefix=os.path.splitext(os.path.basename(file))[0]
+            params_mapping=[
+                "ma_type",
+                "ma_period",
+                "atr_ma_type",
+                "atr_period",
+                "atr_multi",
+                "source",
+            ],
+            indicator_name_prefix=os.path.splitext(os.path.basename(file))[0],
         )
 
     print(df.head())
-    df.to_csv(path.join(MODELING_DATASET_DIR, 'modeling.csv'), index=False)
+    df.to_csv(path.join(MODELING_DATASET_DIR, "modeling.csv"), index=False)

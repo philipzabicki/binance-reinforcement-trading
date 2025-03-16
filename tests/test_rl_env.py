@@ -27,7 +27,7 @@ ENV_KWARGS = {
     "render_range": 60,
     # 'slippage': get_slippage_stats('spot', 'BTCFDUSD', '1m', 'market'),
     "verbose": True,
-    "report_to_file": True
+    "report_to_file": True,
 }
 
 if __name__ == "__main__":
