@@ -14,7 +14,7 @@ ADL_SHAPE = None
 
 
 def keltner_channel_initializer(ohlcv: np.ndarray):
-    print(f"keltner_channel_initializer ohlcv: {ohlcv}")
+    # print(f"keltner_channel_initializer ohlcv: {ohlcv}")
     ohlcv_initializer(ohlcv)
     global TRANGE_BYTES, TRANGE_SHAPE
     # Precompute the bytes representation and shape of the constant array.
@@ -36,7 +36,7 @@ def ohlcv_initializer(ohlcv: np.ndarray):
     OHLCV_SHAPE = ohlcv.shape
 
 
-@lru_cache(maxsize=4096)
+@lru_cache(maxsize=2048)
 def get_ma_from_source_cache(ma_type: int, ma_period: int, source: str) -> np.ndarray:
     global OHLCV_BYTES, OHLCV_SHAPE
     if OHLCV_BYTES is None or OHLCV_SHAPE is None:
@@ -45,7 +45,7 @@ def get_ma_from_source_cache(ma_type: int, ma_period: int, source: str) -> np.nd
     return get_ma_from_source(ohlcv_array, ma_type, ma_period, source)
 
 
-@lru_cache(maxsize=8192)
+@lru_cache(maxsize=4096)
 def get_adl_ma_cache(ma_type: int, period: int) -> np.ndarray:
     global ADL_BYTES, ADL_SHAPE
     if ADL_BYTES is None or ADL_SHAPE is None:
@@ -54,7 +54,7 @@ def get_adl_ma_cache(ma_type: int, period: int) -> np.ndarray:
     return get_1D_MA(adl, ma_type, period)
 
 
-@lru_cache(maxsize=2048)
+@lru_cache(maxsize=1024)
 def custom_ATR_cache(atr_ma_type: int, atr_period: int) -> np.ndarray:
     global TRANGE_BYTES, TRANGE_SHAPE
     if TRANGE_BYTES is None or TRANGE_SHAPE is None:
@@ -79,13 +79,13 @@ def sochf_cache(fastk_period: int) -> np.ndarray:
 
 
 def custom_keltner_channel_signal_cached(
-    ohlcv: np.ndarray,
-    ma_type: int,
-    ma_period: int,
-    atr_ma_type: int,
-    atr_period: int,
-    atr_multi: float,
-    source: str,
+        ohlcv: np.ndarray,
+        ma_type: int,
+        ma_period: int,
+        atr_ma_type: int,
+        atr_period: int,
+        atr_multi: float,
+        source: str,
 ):
     return any_ma_sig(
         np_close=ohlcv[:, 3],
@@ -96,14 +96,14 @@ def custom_keltner_channel_signal_cached(
 
 
 def custom_MACD_cached(
-    fast_source,
-    slow_source,
-    fast_period,
-    slow_period,
-    signal_period,
-    fast_ma_type,
-    slow_ma_type,
-    signal_ma_type,
+        fast_source,
+        slow_source,
+        fast_period,
+        slow_period,
+        signal_period,
+        fast_ma_type,
+        slow_ma_type,
+        signal_ma_type,
 ):
     macd = get_ma_from_source_cache(
         fast_ma_type, fast_period, fast_source
@@ -112,7 +112,7 @@ def custom_MACD_cached(
 
 
 def custom_StochasticOscillator_cached(
-    fastK_period, slowK_period, slowD_period, slowK_ma_type, slowD_ma_type
+        fastK_period, slowK_period, slowD_period, slowK_ma_type, slowD_ma_type
 ):
     fastK = sochf_cache(fastK_period)
     slowK = (
@@ -125,7 +125,7 @@ def custom_StochasticOscillator_cached(
 
 
 def custom_ChaikinOscillator_cached(
-    fast_period, slow_period, fast_ma_type, slow_ma_type
+        fast_period, slow_period, fast_ma_type, slow_ma_type
 ):
     return get_adl_ma_cache(fast_ma_type, fast_period) - get_adl_ma_cache(
         slow_ma_type, slow_period
@@ -133,7 +133,7 @@ def custom_ChaikinOscillator_cached(
 
 
 def custom_StochasticOscillator(
-    ohlcv, fastK_period, slowK_period, slowD_period, slowK_ma_type, slowD_ma_type
+        ohlcv, fastK_period, slowK_period, slowD_period, slowK_ma_type, slowD_ma_type
 ):
     fastK, _ = talib.STOCHF(
         *ohlcv[:, 1:4].T, fastk_period=fastK_period, fastd_period=1, fastd_matype=0
@@ -154,15 +154,15 @@ def custom_ChaikinOscillator(adl, fast_period, slow_period, fast_ma_type, slow_m
 
 
 def custom_MACD(
-    ohlcv,
-    fast_source,
-    slow_source,
-    fast_period,
-    slow_period,
-    signal_period,
-    fast_ma_type,
-    slow_ma_type,
-    signal_ma_type,
+        ohlcv,
+        fast_source,
+        slow_source,
+        fast_period,
+        slow_period,
+        signal_period,
+        fast_ma_type,
+        slow_ma_type,
+        signal_ma_type,
 ):
     macd = get_ma_from_source(
         ohlcv, fast_ma_type, fast_period, fast_source
@@ -171,14 +171,14 @@ def custom_MACD(
 
 
 def custom_keltner_channel_signal(
-    ohlcv: np.ndarray,
-    true_range: np.ndarray,
-    ma_type: int,
-    ma_period: int,
-    atr_ma_type: int,
-    atr_period: int,
-    atr_multi: float,
-    source: str,
+        ohlcv: np.ndarray,
+        true_range: np.ndarray,
+        ma_type: int,
+        ma_period: int,
+        atr_ma_type: int,
+        atr_period: int,
+        atr_multi: float,
+        source: str,
 ):
     return any_ma_sig(
         np_close=ohlcv[:, 3],
@@ -189,16 +189,16 @@ def custom_keltner_channel_signal(
 
 
 def custom_ADX(
-    ohlcv: np.ndarray,
-    true_range: np.ndarray,
-    atr_period: int,
-    posDM_period: int,
-    negDM_period: int,
-    adx_period: int,
-    ma_type_atr: int,
-    ma_type_posDM: int,
-    ma_type_negDM: int,
-    ma_type_adx: int,
+        ohlcv: np.ndarray,
+        true_range: np.ndarray,
+        atr_period: int,
+        posDM_period: int,
+        negDM_period: int,
+        adx_period: int,
+        ma_type_atr: int,
+        ma_type_posDM: int,
+        ma_type_negDM: int,
+        ma_type_adx: int,
 ):
     # print('')
     high = ohlcv[:, 1]
@@ -247,7 +247,6 @@ def custom_ADX(
     #         f"{name} Kwantyle 25%: {q[0]:.2f}, 50% (Mediana): {q[1]:.2f}, 75%: {q[2]:.2f} Min: {np.min(data):.2f}, Max: {np.max(data):.2f}")
     return adx, plus_DI, minus_DI
 
-
 # def custom_keltner_channel_signal_old(np_df: np.ndarray, ma_type: int, ma_period: int, atr_period: int, atr_multi: float,
 #                                   source: str):
 #     def any_ma_sig(np_close: np.ndarray, np_xMA: np.ndarray, np_ATR: np.ndarray, atr_multi: float = 1.0) -> np.ndarray:
@@ -262,3 +261,47 @@ def custom_ADX(
 #     except TypeError:
 #         print(f'len(np_df) {len(np_df)}')
 #         print(f'np_df[:, 3] {np_df[:, 3]}')
+
+def add_volume_profile_fixed_range(
+        df,
+        price_min = 1,
+        price_max = 1_000_000,
+        step = 5,
+        bins_back = 10,
+        bins_forward = 10,
+        vwap_col='VWAP'
+    ):
+    if vwap_col == 'HL2':
+        df['HL2'] = (df['High'] + df['Low'])/2
+
+    price_levels = np.arange(price_min, price_max + step, step, dtype=float)
+    bins = len(price_levels) - 1
+    volume_profile = np.zeros(bins, dtype=float)
+
+    df = df.copy().reset_index(drop=True)
+    shifts = [s for s in range(-bins_back, bins_forward + 1) if s != 0]
+    for s in shifts:
+        df[f"VP_bin_pct_{s:+}"] = np.nan
+
+    def get_bin_idx(price):
+        idx = np.searchsorted(price_levels, price, side="right") - 1
+        return np.clip(idx, 0, bins - 1)
+
+    for i, (low_i, high_i, vwap_i, vol_i) in df[["Low", "High", vwap_col, "Volume"]].iterrows():
+        bin_idx = get_bin_idx(vwap_i)
+        curr_vol = volume_profile[bin_idx]
+
+        for s in shifts:
+            nb = np.clip(bin_idx + s, 0, bins - 1)
+            neigh_vol = volume_profile[nb]
+            col = f"VP_bin_pct_{s:+}"
+            df.at[i, col] = 0.0 if curr_vol == 0 else (neigh_vol - curr_vol) / curr_vol
+
+        start = get_bin_idx(low_i)
+        end   = get_bin_idx(high_i)
+        volume_profile[start:end + 1] += vol_i
+
+    if vwap_col == 'HL2':
+        df.drop(columns='HL2', inplace=True)
+
+    return df

@@ -18,29 +18,29 @@ from utils.visualize import TradingGraph
 
 class SpotBacktest(Env):
     def __init__(
-        self,
-        df,
-        start_date="",
-        end_date="",
-        max_steps=0,
-        exclude_cols_left=1,
-        no_action_finish=2_880,
-        steps_passive_penalty=0,
-        init_balance=1_000,
-        position_ratio=1.0,
-        save_ratio=None,
-        stop_loss=None,
-        take_profit=None,
-        fee=0.0002,
-        coin_step=0.001,
-        slippage=None,
-        slipp_std=0,
-        visualize=False,
-        render_range=120,
-        verbose=True,
-        report_to_file=False,
-        *args,
-        **kwargs,
+            self,
+            df,
+            start_date="",
+            end_date="",
+            max_steps=0,
+            exclude_cols_left=1,
+            no_action_finish=2_880,
+            steps_passive_penalty=0,
+            init_balance=1_000,
+            position_ratio=1.0,
+            save_ratio=None,
+            stop_loss=None,
+            take_profit=None,
+            fee=0.0002,
+            coin_step=0.001,
+            slippage=None,
+            slipp_std=0,
+            visualize=False,
+            render_range=120,
+            verbose=True,
+            report_to_file=False,
+            *args,
+            **kwargs,
     ):
         # Configure logging for this instance
         logging.basicConfig(
@@ -106,7 +106,7 @@ class SpotBacktest(Env):
             self.start_index = 0
             self.end_index = self.dates.shape[0] - 1
 
-        trade_range_size = self.df[self.start_index : self.end_index, :].shape[0]
+        trade_range_size = self.df[self.start_index: self.end_index, :].shape[0]
         self.trade_range_size = trade_range_size
         if trade_range_size < self.max_steps:
             raise ValueError(
@@ -133,14 +133,14 @@ class SpotBacktest(Env):
 
         if self.slippage is not None:
             self.buy_factor = (
-                self.slippage["buy"][0] + self.slippage["buy"][1] * self.slipp_std
+                    self.slippage["buy"][0] + self.slippage["buy"][1] * self.slipp_std
             )
             self.sell_factor = (
-                self.slippage["sell"][0] - self.slippage["sell"][1] * self.slipp_std
+                    self.slippage["sell"][0] - self.slippage["sell"][1] * self.slipp_std
             )
             self.stop_loss_factor = (
-                self.slippage["stop_loss"][0]
-                - self.slippage["stop_loss"][1] * self.slipp_std
+                    self.slippage["stop_loss"][0]
+                    - self.slippage["stop_loss"][1] * self.slipp_std
             )
             self.take_profit_factor = 1.0  # To be updated if needed
         else:
@@ -153,7 +153,8 @@ class SpotBacktest(Env):
         self.cum_pnl = 0.0
         self.total_steps = len(self.df)
         if self.steps_passive_penalty == "auto":
-            self.steps_passive_penalty = int(sqrt(self.max_steps))
+            base = self.max_steps if self.max_steps > 0 else self.total_steps
+            self.steps_passive_penalty = max(int(sqrt(base)), 1)
             self.passive_penalty = True
         elif self.steps_passive_penalty > 0:
             self.passive_penalty = True
@@ -272,7 +273,7 @@ class SpotBacktest(Env):
             self.end_step = self.end_index
         self.current_step = self.start_step
         self.obs = iter(
-            self.df[self.start_step : self.end_step, self.exclude_cols_left :]
+            self.df[self.start_step: self.end_step, self.exclude_cols_left:]
         )
         # return self.df[self.current_step, self.exclude_cols_left:]
         return next(self.obs)
@@ -281,9 +282,9 @@ class SpotBacktest(Env):
         if self.in_position:
             _pnl = self.df[self.current_step, 3] / self.enter_price - 1
             return (
-                self.balance
-                + (self.position_size + (self.position_size * _pnl))
-                + self.save_balance
+                    self.balance
+                    + (self.position_size + (self.position_size * _pnl))
+                    + self.save_balance
             )
         else:
             return self.balance + self.save_balance
@@ -385,7 +386,7 @@ class SpotBacktest(Env):
         except StopIteration:
             self.current_step -= 1
             self._finish_episode()
-            return self.df[self.current_step, self.exclude_cols_left :]
+            return self.df[self.current_step, self.exclude_cols_left:]
 
     def step(self, action):
         self.last_order_type = ""
@@ -415,7 +416,7 @@ class SpotBacktest(Env):
             self._buy(close)
             self.pnl = (close / self.enter_price) - 1
         elif (not self.episode_orders) and (
-            (self.current_step - self.start_step) > self.no_action_finish
+                (self.current_step - self.start_step) > self.no_action_finish
         ):
             self._finish_episode()
         else:
@@ -470,10 +471,10 @@ class SpotBacktest(Env):
             slope_indicator = 1.000
             steps = self.max_steps if self.max_steps > 0 else self.total_steps
             in_gain_indicator = self.with_gain_c / (
-                steps
-                - self.profit_hold_counter
-                - self.loss_hold_counter
-                - self.episode_orders
+                    steps
+                    - self.profit_hold_counter
+                    - self.loss_hold_counter
+                    - self.episode_orders
             )
             # if above_free > 0:
             #     if hasattr(self, "leverage"):
@@ -529,6 +530,7 @@ class SpotBacktest(Env):
         # if self.balance >= 1_000_000:
         #     self.verbose = True
         if self.verbose:
+            # print('\n')
             print(
                 f"Episode finished: gain:${gain:.2f}({total_return * 100:.2f}%), gain/step:${gain / (self.end_step - self.start_step):.5f}, cumulative_fees:${self.cumulative_fees:.2f}, SL_losses:${self.SL_losses:.2f} take_profits:{self.take_profits_c}\n"
                 f" stop_loss:{self.stop_loss}, take_profit:{self.take_profit}, save_ratio:{self.save_ratio}, saved_balance:${self.save_balance:.2f}\n"
@@ -537,6 +539,7 @@ class SpotBacktest(Env):
                 f" slope_indicator:{slope_indicator:.4f}, in_gain_indicator:{in_gain_indicator:.3f}, sharpe_ratio:{sharpe_ratio:.2f}, sortino_ratio:{sortino_ratio:.2f}, risk_free:{risk_free_return * 100:.2f}%, above_free:{above_free * 100:.2f}%\n"
                 f" reward:{self.reward:.8f} exec_time:{exec_time:.2f}s"
             )
+            # print('\n')
         self.info = {
             "gain": gain,
             "PnL_means_ratio": PnL_means_ratio,
@@ -712,8 +715,8 @@ class FuturesBacktest(SpotBacktest):
         # https://www.binance.com/en/support/faq/how-to-calculate-liquidation-price-of-usd%E2%93%A2-m-futures-contracts-b3c689c1f50a44cabb3a84e663b81d93
         # 1,25% liquidation clearance fee https://www.binance.com/en/futures/trading-rules/perpetual/
         self.liquidation_price = (
-            self.margin * (1 - 0.0125) - self.qty * self.enter_price
-        ) / (abs(self.qty) * self.POSITION_TIER[self.tier][1] - self.qty)
+                                         self.margin * (1 - 0.0125) - self.qty * self.enter_price
+                                 ) / (abs(self.qty) * self.POSITION_TIER[self.tier][1] - self.qty)
         # print(f'OPENED {side} price:{price} adj_price:{adj_price} qty:{self.qty} margin:{self.margin} fee:{fee}')
         # sleep(10)
 
@@ -752,8 +755,8 @@ class FuturesBacktest(SpotBacktest):
             self.liquidation_losses -= self.margin
         else:
             unrealized_PNL = (
-                abs(self.qty) * self.enter_price / self.leverage
-            ) * self._get_pnl(adj_price)
+                                     abs(self.qty) * self.enter_price / self.leverage
+                             ) * self._get_pnl(adj_price)
             margin_balance = self.margin + unrealized_PNL - _fee
         self.cumulative_fees -= _fee
         self.balance += margin_balance
@@ -809,13 +812,13 @@ class FuturesBacktest(SpotBacktest):
                 self.liquidations += 1
                 self._close_position(mark_close, liquidated=True)
             elif (self.stop_loss is not None) and (
-                ((low <= self.stop_loss_price) and (self.qty > 0))
-                or ((high >= self.stop_loss_price) and (self.qty < 0))
+                    ((low <= self.stop_loss_price) and (self.qty > 0))
+                    or ((high >= self.stop_loss_price) and (self.qty < 0))
             ):
                 self._close_position(self.stop_loss_price, sl=True)
             elif (self.take_profit is not None) and (
-                ((high >= self.take_profit_price) and (self.qty > 0))
-                or ((low <= self.take_profit_price) and (self.qty < 0))
+                    ((high >= self.take_profit_price) and (self.qty > 0))
+                    or ((low <= self.take_profit_price) and (self.qty < 0))
             ):
                 self._close_position(self.take_profit_price, tp=True)
             elif (action == 1 and self.qty < 0) or (action == 2 and self.qty > 0):

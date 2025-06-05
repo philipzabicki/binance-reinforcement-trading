@@ -1,9 +1,9 @@
 from collections import deque
 
-from cv2 import cvtColor, imshow, waitKey, destroyAllWindows, COLOR_RGB2BGR
+from cv2 import cvtColor, imshow, waitKey, destroyAllWindows, COLOR_RGB2BGR, COLOR_RGBA2BGR
 from matplotlib import dates as mpl_dates, pyplot as plt
 from mplfinance.original_flavor import candlestick_ohlc
-from numpy import array, where, max, min, fromstring, uint8
+from numpy import array, where, max, min, frombuffer, uint8
 
 
 class TradingGraph:
@@ -11,7 +11,7 @@ class TradingGraph:
     # Date, Open, High, Low, Close, Volume, net_worth, trades
     # call render every step
     def __init__(
-        self, render_range, time_step=1 / 24, Show_reward=True, Show_indicators=False
+            self, render_range, time_step=1 / 24, Show_reward=True, Show_indicators=False
     ):
         self.render_queue = deque(maxlen=render_range)
         self.render_arr = array(self.render_queue)
@@ -175,9 +175,9 @@ class TradingGraph:
 
             x_position = self.render_arr[i, 0]
             if (
-                self.trades_arr[i, 0] == "open_long"
-                or self.trades_arr[i, 0] == "close_short"
-                or self.trades_arr[i, 0] == "take_profit_short"
+                    self.trades_arr[i, 0] == "open_long"
+                    or self.trades_arr[i, 0] == "close_short"
+                    or self.trades_arr[i, 0] == "take_profit_short"
             ):
                 low_pos = self.render_arr[i, 3] * 0.9999
                 self.ax1.scatter(
@@ -198,9 +198,9 @@ class TradingGraph:
                     size=self.render_range * ANNOT_TEXT_SIZE_MULTI,
                 )
             elif (
-                self.trades_arr[i, 0] == "open_short"
-                or self.trades_arr[i, 0] == "close_long"
-                or self.trades_arr[i, 0] == "take_profit_long"
+                    self.trades_arr[i, 0] == "open_short"
+                    or self.trades_arr[i, 0] == "close_long"
+                    or self.trades_arr[i, 0] == "take_profit_long"
             ):
                 high_pos = self.render_arr[i, 2] * 1.0001
                 self.ax1.scatter(
@@ -327,12 +327,14 @@ class TradingGraph:
 
         # redraw the canvas
         self.fig.canvas.draw()
-        # convert canvas to image
-        img = fromstring(self.fig.canvas.tostring_argb(), dtype=uint8, sep="")
-        img = img.reshape(self.fig.canvas.get_width_height()[::-1] + (3,))
 
-        # img is rgb, convert to opencv's default bgr
-        image = cvtColor(img, COLOR_RGB2BGR)
+        # ----- BEZKOPIOWY odczyt RGBA -----
+        w, h = self.fig.canvas.get_width_height()
+        buf = self.fig.canvas.buffer_rgba()  # <-- bytes-like, 4 kanały RGBA
+        img = frombuffer(buf, dtype=uint8).reshape(h, w, 4)
+
+        # konwersja RGBA → BGR (OpenCV)
+        image = cvtColor(img, COLOR_RGBA2BGR)
 
         # display image with OpenCV or any operation you like
         imshow("Bitcoin trading bot", image)

@@ -3,7 +3,6 @@ from warnings import warn
 
 import numpy as np
 from gym import spaces
-
 # from gymnasium import spaces
 from numpy import array, inf, full, float32, zeros, hstack
 
@@ -21,7 +20,7 @@ class DiscreteSpotTakerRL(SpotBacktest):
                 f"OHLCV values are not excluded from features/observation space (exclude_cols_left={self.exclude_cols_left})"
             )
         self.obs_space_dims = (
-            len(self.df[0, self.exclude_cols_left :]) + trade_obs_space
+                len(self.df[0, self.exclude_cols_left:]) + trade_obs_space
         )
         obs_lower_bounds = full((self.lookback_size, self.obs_space_dims), -inf)
         obs_upper_bounds = full((self.lookback_size, self.obs_space_dims), inf)
@@ -120,7 +119,7 @@ class DiscreteSpotTakerRL(SpotBacktest):
                 self.reward = relative_profit + relative_profit * min(peak_scaling, 1)
             self.position_closed, self.cum_pnl = 0, 0
         elif self.passive_penalty and (
-            self.passive_counter > self.steps_passive_penalty
+                self.passive_counter > self.steps_passive_penalty
         ):
             self.reward -= 0.05
         else:

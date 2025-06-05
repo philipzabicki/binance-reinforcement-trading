@@ -108,7 +108,6 @@ class SignalCleanSpotEnv(SpotBacktest):
                 self.current_step += 1
         return None, self.reward, self.done, False, self.info
 
-
 # class SignalExecuteFuturesEnv(FuturesBacktest):
 #     def __init__(self, *args, **kwargs):
 #         super().__init__(*args, **kwargs)

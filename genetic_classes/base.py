@@ -94,44 +94,44 @@ def get_variables_plot(x_variables, problem, fname, save=True, dpi=75):
     plot = PCP(figsize=(21, 9), labels=labels, bounds=bounds, tight_layout=True)
     plot.set_axis_style(color="grey", alpha=1)
     plot.add(X_array, color="grey", alpha=0.3)
-    plot.add(X_array[int(pop_size * 0.9) + 1 :], linewidth=1.9, color="#a4f0ff")
+    plot.add(X_array[int(pop_size * 0.9) + 1:], linewidth=1.9, color="#a4f0ff")
     plot.add(
-        X_array[int(pop_size * 0.8) + 1 : int(pop_size * 0.9)],
+        X_array[int(pop_size * 0.8) + 1: int(pop_size * 0.9)],
         linewidth=1.8,
         color="#88e7fa",
     )
     plot.add(
-        X_array[int(pop_size * 0.7) + 1 : int(pop_size * 0.8)],
+        X_array[int(pop_size * 0.7) + 1: int(pop_size * 0.8)],
         linewidth=1.7,
         color="#60d8f3",
     )
     plot.add(
-        X_array[int(pop_size * 0.6) + 1 : int(pop_size * 0.7)],
+        X_array[int(pop_size * 0.6) + 1: int(pop_size * 0.7)],
         linewidth=1.6,
         color="#33c5e8",
     )
     plot.add(
-        X_array[int(pop_size * 0.5) + 1 : int(pop_size * 0.6)],
+        X_array[int(pop_size * 0.5) + 1: int(pop_size * 0.6)],
         linewidth=1.5,
         color="#12b0da",
     )
     plot.add(
-        X_array[int(pop_size * 0.4) + 1 : int(pop_size * 0.5)],
+        X_array[int(pop_size * 0.4) + 1: int(pop_size * 0.5)],
         linewidth=1.4,
         color="#019cc8",
     )
     plot.add(
-        X_array[int(pop_size * 0.3) + 1 : int(pop_size * 0.4)],
+        X_array[int(pop_size * 0.3) + 1: int(pop_size * 0.4)],
         linewidth=1.3,
         color="#0086b4",
     )
     plot.add(
-        X_array[int(pop_size * 0.2) + 1 : int(pop_size * 0.3)],
+        X_array[int(pop_size * 0.2) + 1: int(pop_size * 0.3)],
         linewidth=1.2,
         color="#00719f",
     )
     plot.add(
-        X_array[int(pop_size * 0.1) + 1 : int(pop_size * 0.2)],
+        X_array[int(pop_size * 0.1) + 1: int(pop_size * 0.2)],
         linewidth=1.1,
         color="#005d89",
     )

@@ -21,7 +21,7 @@ def fib_to(n, normalization=True):
 
 
 def HullMA(
-    close: list | np.ndarray, timeperiod: int
+        close: list | np.ndarray, timeperiod: int
 ) -> ndarray[Any, dtype[floating[_64Bit]]]:
     return talib.WMA(
         np.nan_to_num(talib.WMA(close, timeperiod // 2) * 2)
@@ -89,7 +89,7 @@ def LSMA(close: np.ndarray, timeperiod: int) -> np.ndarray:
     AT = np.ascontiguousarray(A.T)
     ATA_inv = np.linalg.inv(np.dot(AT, A))
     for i in range(timeperiod - 1, len(close)):
-        m, c = np.dot(ATA_inv, np.dot(AT, close[i - timeperiod + 1 : i + 1]))
+        m, c = np.dot(ATA_inv, np.dot(AT, close[i - timeperiod + 1: i + 1]))
         lsma[i] = m * (timeperiod - 1) + c
     return lsma
 
@@ -97,7 +97,7 @@ def LSMA(close: np.ndarray, timeperiod: int) -> np.ndarray:
 # @feature_timeit
 # @jit(nopython=True, nogil=True, cache=True)
 def ALMA(
-    close: np.ndarray, timeperiod: int, offset: float = 0.85, sigma: int = 6
+        close: np.ndarray, timeperiod: int, offset: float = 0.85, sigma: int = 6
 ) -> np.ndarray:
     """
     Calculate the Arnaud Legoux Moving Average (ALMA) for a given input time series.
@@ -119,7 +119,7 @@ def ALMA(
     # close = np.ascontiguousarray(close)
     m = offset * (timeperiod - 1)
     s = timeperiod / sigma
-    denominator = 2 * s**2
+    denominator = 2 * s ** 2
     wtd = np.array(
         [np.exp(-((i - m) ** 2) / denominator) for i in range(timeperiod)],
         dtype=close.dtype,
@@ -155,8 +155,8 @@ def VWMAv1(close: np.ndarray, volume: np.ndarray, timeperiod: int):
     volume = np.ascontiguousarray(volume)
     vwma = np.array(
         [
-            np.sum(close[i - timeperiod : i] * volume[i - timeperiod : i])
-            / np.sum(volume[i - timeperiod : i])
+            np.sum(close[i - timeperiod: i] * volume[i - timeperiod: i])
+            / np.sum(volume[i - timeperiod: i])
             for i in range(timeperiod, len(close) + 1)
         ]
     )
@@ -321,7 +321,7 @@ def NadarayWatsonMA(close: np.ndarray, timeperiod: int, kernel: int = 0) -> np.n
     weights_sum = weights.sum()
     nwma = np.array(
         [
-            (weights @ close[i - timeperiod + 1 : i + 1]) / weights_sum
+            (weights @ close[i - timeperiod + 1: i + 1]) / weights_sum
             for i in range(timeperiod - 1, len(close))
         ]
     )
@@ -335,7 +335,7 @@ def LWMA(close: np.ndarray, period: int) -> np.ndarray:
     weights_sum = weights.sum()
     lwma = np.array(
         [
-            np.dot(close[i - period + 1 : i + 1], weights) / weights_sum
+            np.dot(close[i - period + 1: i + 1], weights) / weights_sum
             for i in range(period - 1, len(close))
         ]
     )
@@ -353,7 +353,7 @@ def MGD(close: np.ndarray, period: int) -> np.ndarray:
         else:
             denominator = 1.0
         md[i] = md[i - 1] + (close[i] - md[i - 1]) / (
-            period * np.power((close[i] / denominator), 4)
+                period * np.power((close[i] / denominator), 4)
         )
     return md
 
@@ -393,7 +393,7 @@ def CWMA(close, weights, period):
     for i in range(period, len(close)):
         # print(f'window_weight_sum {window_weight_sum}')
         # print(f'window_prod_sum {window_prod_sum}')
-        window_prod_sum = np.sum(close[i - period : i] * weights)
+        window_prod_sum = np.sum(close[i - period: i] * weights)
         cwma[i] = window_prod_sum / window_weight_sum
         # print(f'cwma {cwma[i]}')
     return cwma

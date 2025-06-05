@@ -30,14 +30,8 @@ DATA_TYPE = "klines"
 
 
 def process_indicator_file(
-    file_path, indicator_func, params_mapping, indicator_name_prefix
+        file_path, indicator_func, params_mapping, indicator_name_prefix
 ):
-    """
-    file_path: path to the CSV file with indicator parameters
-    indicator_func: function that calculates the oscillator
-    params_mapping: list of CSV column names to be passed to the function
-    indicator_name_prefix: prefix for the resulting DataFrame column name – also contains the signal type
-    """
     params_df = pd.read_csv(file_path)
     for idx, row in params_df.iterrows():
         osc_params = [row[col] for col in params_mapping]

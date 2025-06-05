@@ -74,12 +74,13 @@ def make_env(df, **env_kwargs):
     return _init
 
 
-MODELING_DATASET_FILENAME = "modeling.csv"
+MODELING_DATASET_FILENAME = "modeling_test.csv"
 DATASET_SPLIT_DATE = "2024-03-01"
-NUM_ENVS = 6
+NUM_ENVS = 4
+TOTAL_ENV_STEPS = 600_000
 ENV_KWARGS = {
-    "lookback_size": 24,  # 6h obs history (5m itv)
-    "max_steps": 8_640,  # 30D of trading (5m itv)
+    "lookback_size": 48,  # 6h obs history (5m itv)
+    "max_steps": 2_160,  # 30D of trading (5m itv)
     "exclude_cols_left": 5,
     "init_balance": 1_000,
     "no_action_finish": inf,
@@ -93,17 +94,19 @@ ENV_KWARGS = {
     "report_to_file": False,
 }
 MODEL_PARAMETERS = {
-    "batch_size": 168,  # 168, 252, 336, 504
+    "batch_size": 64,  # 168, 252, 336, 504
     "buffer_size": 100_000,  # Rozmiar bufora doświadczeń
-    "learning_starts": 1_000,  # Liczba kroków przed rozpoczęciem uczenia
-    "train_freq": (1, "step"),  # Częstotliwość trenowania
-    "target_update_interval": 1_000,  # Częstotliwość aktualizacji docelowej sieci
+    # "optimize_memory_usage": True,
+    # "handle_timeout_termination": False,
+    "learning_starts": 5_000 * NUM_ENVS,  # Liczba kroków przed rozpoczęciem uczenia
+    "train_freq": (4, "step"),  # Częstotliwość trenowania
+    "target_update_interval": 8_000,  # Częstotliwość aktualizacji docelowej sieci
     "learning_rate": 1e-4,
     "gamma": 0.99,
     "exploration_initial_eps": 1.0,
-    "exploration_final_eps": 0.05,
-    "exploration_fraction": 0.1,
-    "total_timesteps": 5_000_000,
+    "exploration_final_eps": 0.02,
+    "exploration_fraction": 0.30,
+    "total_timesteps": NUM_ENVS * TOTAL_ENV_STEPS,
 }
 
 if __name__ == "__main__":
@@ -112,6 +115,20 @@ if __name__ == "__main__":
     tensorboard_log_dir = f"{TENSORBOARD_DIR}/{experiment_name}"
 
     df_train = pd.read_csv(path.join(MODELING_DATASET_DIR, MODELING_DATASET_FILENAME))
+    # 1. Kształt
+    print("Shape:", df_train.shape)
+
+    # 2a. Info z zużyciem pamięci
+    df_train.info(memory_usage='deep')
+
+    # 2b. Dokładne wyliczenie (utajeniem na poziomie kolumn)
+    mem_per_column = df_train.memory_usage(deep=True)
+    print("\nMemory usage per column:")
+    print(mem_per_column)
+
+    total_mem = mem_per_column.sum()
+    print(f"\nTotal memory: {total_mem / (1024 ** 2):.2f} MB")
+
     # df_train, _ = get_precalculated_dataset_by_filename(MODELING_DATASET_FILENAME, DATASET_SPLIT_DATE)
     # del _  # save memory
     # print(f'Loaded train dataset shape: {df_train.shape}')
@@ -119,8 +136,11 @@ if __name__ == "__main__":
     # df_train = add_scaled_candle_patterns_indicators(df_train)
     # df_train = add_scaled_ultosc_rsi_mfi_up_to_n(df_train, 35, 1)
     # print(f'Post feature imputation train dataset shape: {df_train.shape}')
-
     envs = SubprocVecEnv([make_env(df_train, **ENV_KWARGS) for _ in range(NUM_ENVS)])
+
+    DQN_KWARGS = MODEL_PARAMETERS.copy()
+    total_steps_all_envs = DQN_KWARGS.pop("total_timesteps")
+
     policy_kwargs = dict(
         features_extractor_class=CustomCNNBiLSTMAttentionFeatureExtractor,
         features_extractor_kwargs=dict(features_dim=256),
@@ -128,29 +148,19 @@ if __name__ == "__main__":
         activation_fn=nn.ReLU,
     )
     model = DQN(
-        "CnnPolicy",  # Polityka CNN jest kompatybilna z DQN
+        "MlpPolicy",
         envs,
         policy_kwargs=policy_kwargs,
-        # buffer_size=10,
-        # buffer_size=MODEL_PARAMETERS['buffer_size'],
-        # learning_starts=MODEL_PARAMETERS['learning_starts'],
-        # train_freq=MODEL_PARAMETERS['train_freq'],
-        # target_update_interval=MODEL_PARAMETERS['target_update_interval'],
-        # batch_size=MODEL_PARAMETERS['batch_size'],
-        # learning_rate=MODEL_PARAMETERS['learning_rate'],
-        # gamma=MODEL_PARAMETERS['gamma'],
-        # exploration_initial_eps=MODEL_PARAMETERS['exploration_initial_eps'],
-        # exploration_final_eps=MODEL_PARAMETERS['exploration_final_eps'],
-        # exploration_fraction=MODEL_PARAMETERS['exploration_fraction'],
+        **DQN_KWARGS,
         tensorboard_log=tensorboard_log_dir,
         verbose=1,
         device="cuda",
     )
 
     model.learn(
-        total_timesteps=MODEL_PARAMETERS["total_timesteps"],
+        total_timesteps=total_steps_all_envs,
         progress_bar=True,
-        log_interval=1,
+        log_interval=2,
     )
     # -----------------------------------------
     # time/
@@ -174,16 +184,16 @@ if __name__ == "__main__":
     del model
     model = DQN.load(model_full_path, env=envs)  # Ładowanie modelu DQN
 
-    _, df_test = get_precalculated_dataset_by_filename(
-        MODELING_DATASET_FILENAME, DATASET_SPLIT_DATE
-    )
-    print(f"Loaded test dataset shape: {df_test.shape}")
-    df_test = add_scaled_candle_patterns_indicators(df_test)
-    df_test = add_scaled_ultosc_rsi_mfi_up_to_n(df_test, 35, 1)
+    # _, df_test = get_precalculated_dataset_by_filename(
+    #     MODELING_DATASET_FILENAME, DATASET_SPLIT_DATE
+    # )
+    # print(f"Loaded test dataset shape: {df_test.shape}")
+    # df_test = add_scaled_candle_patterns_indicators(df_test)
+    # df_test = add_scaled_ultosc_rsi_mfi_up_to_n(df_test, 35, 1)
 
     ENV_KWARGS["report_to_file"] = True
     ENV_KWARGS["max_steps"] = 0
-    val_env = DiscreteSpotTakerRL(df=df_test, **ENV_KWARGS)
+    val_env = DiscreteSpotTakerRL(df=df_train, **ENV_KWARGS)
 
     print(f"### VALIDATION STARTED ###", end="\n")
     # for _ in range(10):
@@ -195,7 +205,7 @@ if __name__ == "__main__":
 
     print(f"### VISUALIZATION TEST STARTED ###", end="\n")
     ENV_KWARGS["visualize"] = True
-    visualize_env = DiscreteSpotTakerRL(df=df_test, **ENV_KWARGS)
+    visualize_env = DiscreteSpotTakerRL(df=df_train, **ENV_KWARGS)
     obs = visualize_env.reset()
     terminated = False
     while not terminated:

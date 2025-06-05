@@ -45,8 +45,10 @@ if __name__ == "__main__":
     )
     print(f"df used: {df}")
 
+
     def env_creator(env_config: EnvContext):
         return SpotTakerRL(df=df, **ENV_KWARGS)
+
 
     # Rejestracja niestandardowego środowiska
     from ray.tune.registry import register_env

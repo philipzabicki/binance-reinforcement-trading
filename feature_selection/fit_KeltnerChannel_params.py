@@ -1,13 +1,13 @@
+import cProfile
+import io
 import os
-from multiprocessing import Pool, cpu_count
+import pstats
+import time
+from multiprocessing import Pool
 
+import numpy as np
 import pandas as pd
-
-# from pymoo.algorithms.soo.nonconvex.ga import GA
-# from pymoo.algorithms.soo.nonconvex.optuna import Optuna
 from pymoo.core.mixed import MixedVariableGA
-
-# import matplotlib.pyplot as plt
 from pymoo.core.mixed import (
     MixedVariableMating,
     MixedVariableSampling,
@@ -15,56 +15,73 @@ from pymoo.core.mixed import (
 )
 from pymoo.core.problem import StarmapParallelization
 from pymoo.optimize import minimize
+from pymoo.termination.default import DefaultMultiObjectiveTermination
+from talib import TRANGE
 
+from common import save_checkpoint, load_checkpoint
 from definitions import REPORT_DIR
-from genetic_classes.feature_action_fitter import (
-    KeltnerChannelFitting,
+from genetic_classes.feature_action_fitter import KeltnerChannelFitting
+from utils.feature_generation import (
+    custom_keltner_channel_signal,
+    keltner_channel_initializer,
 )
-from utils.miscellaneous import convert_variables
+from utils.ta_tools import extract_segments_indices
 
-CPU_CORES_COUNT = cpu_count()
+CPU_CORES_COUNT = 17
 print(f"CPUs used: {CPU_CORES_COUNT}")
+
+TERMINATION = DefaultMultiObjectiveTermination(
+    ftol=0.0005, period=5, n_max_gen=100, n_max_evals=1_000_000
+)
 
 PROBLEM = KeltnerChannelFitting
 ALGORITHM = MixedVariableGA
-POP_SIZE = 1024
-TERMINATION = ("n_gen", 75)
+POP_SIZE = 2048
+MAX_ITERATIONS = 25
+SEARCH_MODE = 'mix'
 
-RESULTS_DIR = os.path.join(REPORT_DIR, "feature_fits", "ma_band_action_fits")
+RESULTS_DIR = os.path.join(REPORT_DIR, "feature_fits_quick")
 ACTIONS_FULLPATH = os.path.join(
     REPORT_DIR, "optimal_actions", "final_combined_actions.csv"
 )
+CHECKPOINT_FILE = os.path.join(RESULTS_DIR,
+                               f"keltner_channel_checkpoint_pop{POP_SIZE}_iters{MAX_ITERATIONS}_{SEARCH_MODE}.pkl")
 
 
-def main():
+def pool_initializer(ohlcv_np):
+    keltner_channel_initializer(ohlcv_np)
+
+
+def main(max_iterations=10):
     df = pd.read_csv(ACTIONS_FULLPATH)
-    # vals = df.loc[df['Weight'] > 1.0]
-    # print(f'vals {vals}')
-    quantiles = list(
-        pd.qcut(df.loc[df["Weight"] > 1.0]["Weight"], q=10, labels=False, retbins=True)[
-            1
-        ]
-    )
-    print("Granice binów:")
-    print(quantiles)
-
-    # bins = pd.cut(df.loc[df['Weight'] > 1.0]['Weight'], q=10, include_lowest=True, right=True)
-    # bin_counts = bins.value_counts().sort_index()
-    # print(f'bin_counts {bin_counts}')
-
-    pool = Pool(CPU_CORES_COUNT)
-    runner = StarmapParallelization(pool.starmap)
+    ohlcv_np = df.to_numpy()[:, 1:6].astype(float)
+    print(f"Loaded from file actions df: {df.head()}")
 
     os.makedirs(RESULTS_DIR, exist_ok=True)
+    checkpoint = load_checkpoint(CHECKPOINT_FILE)
+    if checkpoint:
+        iteration = checkpoint["iteration"]
+        unmatched_segments = checkpoint["unmatched_segments"]
+        all_results = checkpoint["all_results"]
+        print(
+            f"Resuming from iteration {iteration} with {len(unmatched_segments)} unmatched segments"
+        )
+    else:
+        iteration = 0
+        unmatched_segments = extract_segments_indices(df["Action"].values)
+        all_results = []
+        print(f"Initial unmatched segments: {len(unmatched_segments)}")
 
-    for ma_type in range(15, 32):
-        results = []  # Lista do przechowywania wyników dla danego ma_type
-        for lower, upper in zip(quantiles[:-1], quantiles[1:]):
-            print(f"Optimize run for ma_type: {ma_type}, range: ({lower}, {upper})")
-            problem = PROBLEM(df, lower, upper, ma_type, elementwise_runner=runner)
+    with Pool(CPU_CORES_COUNT, initializer=pool_initializer, initargs=(ohlcv_np,)) as pool:
+        runner = StarmapParallelization(pool.starmap)
+        while unmatched_segments.shape[0]:
+            print(
+                f"Iteration {iteration}, unmatched segments: {len(unmatched_segments)}"
+            )
+
+            problem = PROBLEM(df=df, target_segments=unmatched_segments, mode=SEARCH_MODE, elementwise_runner=runner)
 
             algorithm = ALGORITHM(
-                n_jobs=-1,
                 pop_size=POP_SIZE,
                 sampling=MixedVariableSampling(),
                 mating=MixedVariableMating(
@@ -77,45 +94,83 @@ def main():
                 problem,
                 algorithm,
                 save_history=False,
-                # callback=GenerationSavingCallback(problem, dir_name, verbose=True),
-                # callback=MinAvgMaxNonzeroSingleObjCallback(problem, verbose=True),
                 termination=TERMINATION,
                 verbose=True,
             )
+            best_params = res.X
 
-            if len(res.F) == 1:
-                variables_dict = convert_variables(res.X)
-                best_gene = {
-                    "ma_type": ma_type,
-                    "lower": lower,
-                    "upper": upper,
-                    "reward": -res.F[0],
-                }
-                best_gene.update(variables_dict)
-                print(f"Best gene: {best_gene}")
-                results.append(best_gene)
-            else:
-                for front, var in zip(res.F, res.X):
-                    variables_dict = convert_variables(var)
-                    pareto_result = {
-                        "ma_type": ma_type,
-                        "lower": lower,
-                        "upper": upper,
-                        "reward": -front,
+            signals = custom_keltner_channel_signal(
+                ohlcv=ohlcv_np,
+                true_range=TRANGE(*df.to_numpy()[:, 2:5].T.astype(float)),
+                ma_type=best_params["ma_type"],
+                ma_period=best_params["ma_period"],
+                atr_ma_type=best_params["atr_ma_type"],
+                atr_period=best_params["atr_period"],
+                atr_multi=best_params["atr_multi"],
+                source=best_params["source"],
+            )
+
+            signals = np.where(signals >= 1, 1, np.where(signals <= -1, -1, 0))
+            gen_segments = extract_segments_indices(signals)
+
+            gen_segments_set = {tuple(seg) for seg in gen_segments}
+            matched = [
+                seg for seg in unmatched_segments if tuple(seg) in gen_segments_set
+            ]
+            if matched:
+                print(f"Matched segments in iteration {iteration}: {len(matched)}")
+                print(f"Best params: {best_params}")
+                unmatched_segments = np.array(
+                    [
+                        seg
+                        for seg in unmatched_segments
+                        if tuple(seg) not in gen_segments_set
+                    ]
+                )
+                all_results.append(
+                    {
+                        "iteration": iteration,
+                        "params": best_params,
+                        "matched": len(matched),
                     }
-                    pareto_result.update(variables_dict)
-                    print(f"Pareto front: {pareto_result}")
-                    results.append(pareto_result)
-        if results:
-            df_results = pd.DataFrame(results)
-            output_file = os.path.join(RESULTS_DIR, f"results_ma_type_{ma_type}.csv")
-            df_results.to_csv(output_file, index=False)
-            print(f"Results for ma_type {ma_type} saved to {output_file}")
-        else:
-            print(f"No results to save for ma_type {ma_type}")
-    pool.close()
-    pool.join()
+                )
+            else:
+                print(
+                    f"No matched segments in iteration {iteration}: 0, Increased max iterations by 1"
+                )
+                max_iterations += 1
+
+            save_checkpoint(
+                CHECKPOINT_FILE, iteration + 1, unmatched_segments, all_results
+            )
+            iteration += 1
+            if iteration >= max_iterations:
+                print("Max iterations reached.")
+                break
+
+    output_file = os.path.join(
+        RESULTS_DIR, f"keltner_channel_pop{POP_SIZE}_iters{MAX_ITERATIONS}_mode{SEARCH_MODE}.csv"
+    )
+    pd.DataFrame(all_results).to_csv(output_file, index=False)
+    print("All results saved.")
+    if os.path.exists(CHECKPOINT_FILE):
+        os.remove(CHECKPOINT_FILE)
+
+
+def profile_main():
+    profiler = cProfile.Profile()
+    profiler.enable()
+    main(MAX_ITERATIONS)
+    profiler.disable()
+    s = io.StringIO()
+    stats = pstats.Stats(profiler, stream=s).sort_stats("tottime")
+    stats.print_stats()
+    print(s.getvalue())
 
 
 if __name__ == "__main__":
-    main()
+    start_time = time.time()  # start timing
+    main(MAX_ITERATIONS)
+    end_time = time.time()  # end timing
+    print(f"Total execution time: {end_time - start_time:.2f} seconds")
+    # profile_main()

@@ -1,13 +1,10 @@
 import os
-
-# import numpy as np
-from multiprocessing import Pool
+from multiprocessing import Pool, cpu_count
 
 import pandas as pd
-
 # from pymoo.algorithms.soo.nonconvex.ga import GA
+# from pymoo.algorithms.soo.nonconvex.optuna import Optuna
 from pymoo.core.mixed import MixedVariableGA
-
 # import matplotlib.pyplot as plt
 from pymoo.core.mixed import (
     MixedVariableMating,
@@ -18,24 +15,20 @@ from pymoo.core.problem import StarmapParallelization
 from pymoo.optimize import minimize
 
 from definitions import REPORT_DIR
-from genetic_classes.feature_action_fitter import ADXFitting
+from genetic_classes.feature_action_fitter import (
+    KeltnerChannelFitting,
+)
 from utils.miscellaneous import convert_variables
 
-# CPU_CORES_COUNT = cpu_count()
-CPU_CORES_COUNT = 14
+CPU_CORES_COUNT = cpu_count()
 print(f"CPUs used: {CPU_CORES_COUNT}")
 
+PROBLEM = KeltnerChannelFitting
 ALGORITHM = MixedVariableGA
-POP_SIZE = 2048
-TERMINATION = ("n_gen", 100)
-PROBLEM = ADXFitting
+POP_SIZE = 1024
+TERMINATION = ("n_gen", 75)
 
-SIGNALS_SOURCE = "cross"
-# SIGNALS_SOURCE = 'trend'
-RESULTS_FILENAME = "adx_cross.csv"
-# RESULTS_FILENAME = 'adx_trend.csv'
-
-RESULTS_DIR = os.path.join(REPORT_DIR, "feature_fits")
+RESULTS_DIR = os.path.join(REPORT_DIR, "feature_fits", "ma_band_action_fits")
 ACTIONS_FULLPATH = os.path.join(
     REPORT_DIR, "optimal_actions", "final_combined_actions.csv"
 )
@@ -43,7 +36,6 @@ ACTIONS_FULLPATH = os.path.join(
 
 def main():
     df = pd.read_csv(ACTIONS_FULLPATH)
-    print(f"df used:  {df}")
     # vals = df.loc[df['Weight'] > 1.0]
     # print(f'vals {vals}')
     quantiles = list(
@@ -58,24 +50,19 @@ def main():
     # bin_counts = bins.value_counts().sort_index()
     # print(f'bin_counts {bin_counts}')
 
-    with Pool(CPU_CORES_COUNT) as pool:
-        runner = StarmapParallelization(pool.starmap)
+    pool = Pool(CPU_CORES_COUNT)
+    runner = StarmapParallelization(pool.starmap)
 
-        os.makedirs(RESULTS_DIR, exist_ok=True)
+    os.makedirs(RESULTS_DIR, exist_ok=True)
 
+    for ma_type in range(15, 32):
         results = []  # Lista do przechowywania wyników dla danego ma_type
         for lower, upper in zip(quantiles[:-1], quantiles[1:]):
-            print(f"Optimize run for Stochastic Oscillator, range: ({lower}, {upper})")
-            problem = PROBLEM(
-                df,
-                lower,
-                upper,
-                signals_source=SIGNALS_SOURCE,
-                elementwise_runner=runner,
-            )
+            print(f"Optimize run for ma_type: {ma_type}, range: ({lower}, {upper})")
+            problem = PROBLEM(df, lower, upper, ma_type, elementwise_runner=runner)
 
             algorithm = ALGORITHM(
-                n_jobs=CPU_CORES_COUNT,
+                n_jobs=-1,
                 pop_size=POP_SIZE,
                 sampling=MixedVariableSampling(),
                 mating=MixedVariableMating(
@@ -96,20 +83,36 @@ def main():
 
             if len(res.F) == 1:
                 variables_dict = convert_variables(res.X)
-                best_gene = {"lower": lower, "upper": upper, "reward": -res.F[0]}
+                best_gene = {
+                    "ma_type": ma_type,
+                    "lower": lower,
+                    "upper": upper,
+                    "reward": -res.F[0],
+                }
                 best_gene.update(variables_dict)
                 print(f"Best gene: {best_gene}")
                 results.append(best_gene)
             else:
                 for front, var in zip(res.F, res.X):
                     variables_dict = convert_variables(var)
-                    pareto_result = {"lower": lower, "upper": upper, "reward": -front}
+                    pareto_result = {
+                        "ma_type": ma_type,
+                        "lower": lower,
+                        "upper": upper,
+                        "reward": -front,
+                    }
                     pareto_result.update(variables_dict)
                     print(f"Pareto front: {pareto_result}")
                     results.append(pareto_result)
-            output_file = os.path.join(RESULTS_DIR, RESULTS_FILENAME)
-            pd.DataFrame(results).to_csv(output_file, index=False)
-            print(f"Results saved to {output_file}")
+        if results:
+            df_results = pd.DataFrame(results)
+            output_file = os.path.join(RESULTS_DIR, f"results_ma_type_{ma_type}.csv")
+            df_results.to_csv(output_file, index=False)
+            print(f"Results for ma_type {ma_type} saved to {output_file}")
+        else:
+            print(f"No results to save for ma_type {ma_type}")
+    pool.close()
+    pool.join()
 
 
 if __name__ == "__main__":

@@ -1,26 +1,27 @@
 from numpy import nan_to_num, array
 from pymoo.core.problem import ElementwiseProblem
 from pymoo.core.variable import Real, Integer, Choice
-
+from scipy.spatial import distance
 # from scipy.stats import spearmanr
 from sklearn.metrics import mean_squared_error
 from talib import AD, TRANGE
 
 from utils.feature_generation import *
-
 # from scipy.signal import correlate
 # from tslearn.metrics import dtw
 from utils.ta_tools import *
 
 
 class KeltnerChannelFitting(ElementwiseProblem):
-    def __init__(self, df, target_segments, min_match_factor=0.01, *args, **kwargs):
-        print(f"Class KeltnerChannelFitting df: {df}")
-        self.target_segments = target_segments
-        self.target_segments_count = len(target_segments)
-        self.df = df.iloc[:, 1:].to_numpy().astype(float)
-        print(f"Class KeltnerChannelFitting self.df: {self.df}")
+    def __init__(self, df, target_segments=None, min_match_factor=0.01, mode='match', *args, **kwargs):
+        self.mode = mode
+        self.target_segments = target_segments if target_segments is not None else extract_segments_indices(
+            df['Action'].values)
+        self.target_segments_count = self.target_segments.shape[0]
+        self.actions = df['Action'].values
+        self.weights = df['Weight'].values
         self.min_match_factor = min_match_factor
+        self.ohlcv = df[['Open', 'High', 'Low', 'Close', 'Volume']].to_numpy().astype(float)
         bands_variables = {
             "ma_type": Integer(bounds=(0, 31)),
             "atr_ma_type": Integer(bounds=(0, 25)),
@@ -43,8 +44,8 @@ class KeltnerChannelFitting(ElementwiseProblem):
         super().__init__(*args, vars=bands_variables, n_obj=1, **kwargs)
 
     def _evaluate(self, X, out, *args, **kwargs):
-        signals = custom_keltner_channel_signal_cached(
-            ohlcv=self.df[:, :5],  # cols 0,1,2,3,4 -> OHLCV
+        raw_signals = custom_keltner_channel_signal_cached(
+            ohlcv=self.ohlcv,
             ma_type=X["ma_type"],
             ma_period=X["ma_period"],
             atr_ma_type=X["atr_ma_type"],
@@ -52,36 +53,52 @@ class KeltnerChannelFitting(ElementwiseProblem):
             atr_multi=X["atr_multi"],
             source=X["source"],
         )
-        signals = np.where(signals >= 1, 1, np.where(signals <= -1, -1, 0))
-        extracted_signals = extract_segments_indices(signals)
+        if self.mode in ['match', 'mix']:
+            signals = np.where(raw_signals >= 1, 1, np.where(raw_signals <= -1, -1, 0))
+            extracted_signals = extract_segments_indices(signals)
+            extracted_signals_set = {tuple(seg) for seg in extracted_signals}
+            match_count = sum(
+                1 for seg in self.target_segments if tuple(seg) in extracted_signals_set
+            )
+            nonzero_signals = np.count_nonzero(signals)
 
-        # Optymalizacja: konwersja wyekstrahowanych segmentów do zbioru
-        extracted_signals_set = {tuple(seg) for seg in extracted_signals}
-        match_count = sum(
-            1 for seg in self.target_segments if tuple(seg) in extracted_signals_set
-        )
-        nonzero_signals = np.count_nonzero(signals)
+            epsilon = 1e-8
+            threshold = self.min_match_factor * self.target_segments_count
 
-        epsilon = 1e-8
-        threshold = self.min_match_factor * self.target_segments_count
-
-        if match_count < threshold:
-            missing_ratio = (threshold - match_count) / threshold
-            penalty = missing_ratio * self.target_segments_count
-            out["F"] = penalty
-        else:
-            ratio1 = match_count / self.target_segments_count
-            ratio2 = match_count / (nonzero_signals + epsilon)
-            out["F"] = -(ratio1 + ratio2) / 2
+            if match_count < threshold:
+                missing_ratio = (threshold - match_count) / threshold
+                penalty = missing_ratio * self.target_segments_count
+                out["F"] = penalty
+            else:
+                ratios = ((match_count / self.target_segments_count) + (match_count / (nonzero_signals + epsilon))) / 2
+                if self.mode == 'mix':
+                    rev_dist = 1 / distance.euclidean(self.actions, raw_signals, w=self.weights)
+                    out["F"] = -1 * (ratios + rev_dist)
+                else:
+                    out["F"] = -ratios
+        elif self.mode == 'distance':
+            out["F"] = distance.euclidean(self.actions, raw_signals, w=self.weights)
 
 
 class MACDFitting(ElementwiseProblem):
-    def __init__(self, df, target_segments, min_match_factor=0.01, *args, **kwargs):
-        self.target_segments = target_segments
-        self.target_segments_count = len(target_segments)
-        self.df = df.iloc[:, 1:].to_numpy().astype(float)
-        print(f"Class MACDFitting self.df: {self.df}")
+    def __init__(self, df, target_segments=None, min_match_factor=0.01, mode='match', *args, **kwargs):
+        self.mode = mode
+        self.target_segments = target_segments if target_segments is not None else extract_segments_indices(
+            df['Action'].values)
+        self.target_segments_count = self.target_segments.shape[0]
+        self.actions = df['Action'].values
+        self.weights = df['Weight'].values
         self.min_match_factor = min_match_factor
+
+        self.signal_func_mapping = {
+            "lines_cross_with_zero": MACD_lines_cross_with_zero,
+            "lines_cross": MACD_lines_cross,
+            "lines_approaching_cross_with_zero": MACD_lines_approaching_cross_with_zero,
+            "lines_approaching_cross": MACD_lines_approaching_cross,
+            "signal_line_zero_cross": MACD_signal_line_zero_cross,
+            "MACD_line_zero_cross": MACD_line_zero_cross,
+            "histogram_reversal": MACD_histogram_reversal,
+        }
         macd_variables = {
             "signal_type": Choice(
                 options=[
@@ -138,18 +155,9 @@ class MACDFitting(ElementwiseProblem):
             signal_ma_type=X["signal_ma_type"],
             signal_period=X["signal_period"],
         )
-        signal_func_mapping = {
-            "lines_cross_with_zero": MACD_lines_cross_with_zero,
-            "lines_cross": MACD_lines_cross,
-            "lines_approaching_cross_with_zero": MACD_lines_approaching_cross_with_zero,
-            "lines_approaching_cross": MACD_lines_approaching_cross,
-            "signal_line_zero_cross": MACD_signal_line_zero_cross,
-            "MACD_line_zero_cross": MACD_line_zero_cross,
-            "histogram_reversal": MACD_histogram_reversal,
-        }
         try:
             # Use mapping to select the function based on signals_source
-            func = signal_func_mapping[X["signal_type"]]
+            func = self.signal_func_mapping[X["signal_type"]]
         except KeyError:
             raise ValueError(
                 "Unknown signals source, available {lines_cross_with_zero, lines_cross, "
@@ -158,32 +166,55 @@ class MACDFitting(ElementwiseProblem):
             )
 
         signals = array(func(macd, macd_signal))
-        extracted_signals = extract_segments_indices(signals)
-        extracted_signals_set = {tuple(seg) for seg in extracted_signals}
-        match_count = sum(
-            1 for seg in self.target_segments if tuple(seg) in extracted_signals_set
-        )
-        nonzero_signals = np.count_nonzero(signals)
+        if self.mode in ['match', 'mix']:
+            extracted_signals = extract_segments_indices(signals)
+            extracted_signals_set = {tuple(seg) for seg in extracted_signals}
+            match_count = sum(
+                1 for seg in self.target_segments if tuple(seg) in extracted_signals_set
+            )
+            nonzero_signals = np.count_nonzero(signals)
 
-        epsilon = 1e-8
-        threshold = self.min_match_factor * self.target_segments_count
+            epsilon = 1e-8
+            threshold = self.min_match_factor * self.target_segments_count
 
-        if match_count < threshold:
-            missing_ratio = (threshold - match_count) / threshold
-            penalty = missing_ratio * self.target_segments_count
-            out["F"] = penalty
-        else:
-            ratio1 = match_count / self.target_segments_count
-            ratio2 = match_count / (nonzero_signals + epsilon)
-            out["F"] = -(ratio1 + ratio2) / 2
+            if match_count < threshold:
+                missing_ratio = (threshold - match_count) / threshold
+                penalty = missing_ratio * self.target_segments_count
+                out["F"] = penalty
+            else:
+                ratios = ((match_count / self.target_segments_count) + (match_count / (nonzero_signals + epsilon))) / 2
+                if self.mode == 'mix':
+                    rev_dist = 1 / distance.euclidean(self.actions, signals, w=self.weights)
+                    out["F"] = -1 * (ratios + rev_dist)
+                else:
+                    out["F"] = -ratios
+        elif self.mode == 'distance':
+            out["F"] = distance.euclidean(self.actions, signals, w=self.weights)
 
 
 class StochasticOscillatorFitting(ElementwiseProblem):
-    def __init__(self, df, target_segments, min_match_factor=0.01, *args, **kwargs):
-        self.target_segments = target_segments
-        self.target_segments_count = len(target_segments)
+    def __init__(self, df, target_segments=None, min_match_factor=0.01, mode='match', *args, **kwargs):
+        self.mode = mode
+        self.target_segments = target_segments if target_segments is not None else extract_segments_indices(
+            df['Action'].values)
+        self.target_segments_count = self.target_segments.shape[0]
+        self.actions = df['Action'].values
+        self.weights = df['Weight'].values
         self.min_match_factor = min_match_factor
 
+        self.signal_func_mapping = {
+            "k_int_cross": k_int_cross,
+            "k_ext_cross": k_ext_cross,
+            "d_int_cross": d_int_cross,
+            "d_ext_cross": d_ext_cross,
+            "k_cross_int_os_ext_ob": k_cross_int_os_ext_ob,
+            "k_cross_ext_os_int_ob": k_cross_ext_os_int_ob,
+            "d_cross_int_os_ext_ob": d_cross_int_os_ext_ob,
+            "d_cross_ext_os_int_ob": d_cross_ext_os_int_ob,
+            "kd_cross": kd_cross,
+            "kd_cross_inside": kd_cross_inside,
+            "kd_cross_outside": kd_cross_outside,
+        }
         stoch_variables = {
             "signal_type": Choice(
                 options=[
@@ -218,27 +249,13 @@ class StochasticOscillatorFitting(ElementwiseProblem):
             slowK_ma_type=X["slowK_ma_type"],
             slowD_ma_type=X["slowD_ma_type"],
         )
-
-        signal_func_mapping = {
-            "k_int_cross": k_int_cross,
-            "k_ext_cross": k_ext_cross,
-            "d_int_cross": d_int_cross,
-            "d_ext_cross": d_ext_cross,
-            "k_cross_int_os_ext_ob": k_cross_int_os_ext_ob,
-            "k_cross_ext_os_int_ob": k_cross_ext_os_int_ob,
-            "d_cross_int_os_ext_ob": d_cross_int_os_ext_ob,
-            "d_cross_ext_os_int_ob": d_cross_ext_os_int_ob,
-            "kd_cross": kd_cross,
-            "kd_cross_inside": kd_cross_inside,
-            "kd_cross_outside": kd_cross_outside,
-        }
         signal_type = X["signal_type"]
-        if signal_type not in signal_func_mapping:
+        if signal_type not in self.signal_func_mapping:
             raise ValueError(
                 "Unknown signal type. Available options: "
-                + ", ".join(signal_func_mapping.keys())
+                + ", ".join(self.signal_func_mapping.keys())
             )
-        func = signal_func_mapping[signal_type]
+        func = self.signal_func_mapping[signal_type]
 
         signals = np.array(
             func(
@@ -248,31 +265,40 @@ class StochasticOscillatorFitting(ElementwiseProblem):
                 overbought_threshold=X["overbought_threshold"],
             )
         )
+        if self.mode in ['match', 'mix']:
+            extracted_signals = extract_segments_indices(signals)
+            extracted_signals_set = {tuple(seg) for seg in extracted_signals}
+            match_count = sum(
+                1 for seg in self.target_segments if tuple(seg) in extracted_signals_set
+            )
+            nonzero_signals = np.count_nonzero(signals)
 
-        extracted_signals = extract_segments_indices(signals)
-        extracted_signals_set = {tuple(seg) for seg in extracted_signals}
-        match_count = sum(
-            1 for seg in self.target_segments if tuple(seg) in extracted_signals_set
-        )
-        nonzero_signals = np.count_nonzero(signals)
+            epsilon = 1e-8
+            threshold = self.min_match_factor * self.target_segments_count
 
-        epsilon = 1e-8
-        threshold = self.min_match_factor * self.target_segments_count
-
-        if match_count < threshold:
-            missing_ratio = (threshold - match_count) / threshold
-            penalty = missing_ratio * self.target_segments_count
-            out["F"] = penalty
-        else:
-            ratio1 = match_count / self.target_segments_count
-            ratio2 = match_count / (nonzero_signals + epsilon)
-            out["F"] = -(ratio1 + ratio2) / 2
+            if match_count < threshold:
+                missing_ratio = (threshold - match_count) / threshold
+                penalty = missing_ratio * self.target_segments_count
+                out["F"] = penalty
+            else:
+                ratios = ((match_count / self.target_segments_count) + (match_count / (nonzero_signals + epsilon))) / 2
+                if self.mode == 'mix':
+                    rev_dist = 1 / distance.euclidean(self.actions, signals, w=self.weights)
+                    out["F"] = -1 * (ratios + rev_dist)
+                else:
+                    out["F"] = -ratios
+        elif self.mode == 'distance':
+            out["F"] = distance.euclidean(self.actions, signals, w=self.weights)
 
 
 class ChaikinOscillatorFitting(ElementwiseProblem):
-    def __init__(self, target_segments, min_match_factor=0.01, *args, **kwargs):
-        self.target_segments = target_segments
-        self.target_segments_count = len(target_segments)
+    def __init__(self, df, target_segments=None, min_match_factor=0.01, mode='match', *args, **kwargs):
+        self.mode = mode
+        self.target_segments = target_segments if target_segments is not None else extract_segments_indices(
+            df['Action'].values)
+        self.target_segments_count = self.target_segments.shape[0]
+        self.actions = df['Action'].values
+        self.weights = df['Weight'].values
         self.min_match_factor = min_match_factor
 
         chaikin_variables = {
@@ -293,24 +319,30 @@ class ChaikinOscillatorFitting(ElementwiseProblem):
         )
         signals = array(ChaikinOscillator_signal(chaikin_oscillator))
 
-        extracted_signals = extract_segments_indices(signals)
-        extracted_signals_set = {tuple(seg) for seg in extracted_signals}
-        match_count = sum(
-            1 for seg in self.target_segments if tuple(seg) in extracted_signals_set
-        )
-        nonzero_signals = np.count_nonzero(signals)
+        if self.mode in ['match', 'mix']:
+            extracted_signals = extract_segments_indices(signals)
+            extracted_signals_set = {tuple(seg) for seg in extracted_signals}
+            match_count = sum(
+                1 for seg in self.target_segments if tuple(seg) in extracted_signals_set
+            )
+            nonzero_signals = np.count_nonzero(signals)
 
-        epsilon = 1e-8
-        threshold = self.min_match_factor * self.target_segments_count
+            epsilon = 1e-8
+            threshold = self.min_match_factor * self.target_segments_count
 
-        if match_count < threshold:
-            missing_ratio = (threshold - match_count) / threshold
-            penalty = missing_ratio * self.target_segments_count
-            out["F"] = penalty
-        else:
-            ratio1 = match_count / self.target_segments_count
-            ratio2 = match_count / (nonzero_signals + epsilon)
-            out["F"] = -(ratio1 + ratio2) / 2
+            if match_count < threshold:
+                missing_ratio = (threshold - match_count) / threshold
+                penalty = missing_ratio * self.target_segments_count
+                out["F"] = penalty
+            else:
+                ratios = ((match_count / self.target_segments_count) + (match_count / (nonzero_signals + epsilon))) / 2
+                if self.mode == 'mix':
+                    rev_dist = 1 / distance.euclidean(self.actions, signals, w=self.weights)
+                    out["F"] = -1 * (ratios + rev_dist)
+                else:
+                    out["F"] = -ratios
+        elif self.mode == 'distance':
+            out["F"] = distance.euclidean(self.actions, signals, w=self.weights)
 
 
 class KeltnerChannelFitting_v1(ElementwiseProblem):
@@ -596,7 +628,6 @@ class ChaikinOscillatorFitting_v1(ElementwiseProblem):
         out["F"] = mean_squared_error(
             nan_to_num(signals[self.mask]), self.actions[self.mask]
         )
-
 
 # class KeltnerChannelFitting(ElementwiseProblem):
 #     def __init__(self, df, *args, **kwargs):

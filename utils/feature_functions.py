@@ -201,7 +201,6 @@ def candle_sizes_kde_pdf_kernels(df, kernels=["gau"], start=10, cpus=-1):
             df[f"{f}_kde_{kernel}_pdf"] = probs
     return df
 
-
 # def _compute_prob_t(t, diffs, increases, decreases):
 #     prob = 0.0
 #     increases_up_to_t = increases[:t]
