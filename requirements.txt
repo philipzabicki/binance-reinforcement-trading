@@ -9,6 +9,7 @@ pandas
 requests
 python-dateutil
 gym
+gymnasium
 stable_baselines3
 ray
 shimmy

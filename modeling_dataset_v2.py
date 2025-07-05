@@ -1,17 +1,23 @@
+import ast
+from datetime import time
 from os import path
 
-import pandas as pd
 import numpy as np
-import ast
+import pandas as pd
 from talib import AD, TRANGE
 
 from definitions import MODELING_DATASET_DIR
+from utils.feature_functions import add_scaled_candle_patterns_indicators
 from utils.feature_generation import (
     custom_StochasticOscillator,
     custom_ChaikinOscillator,
     custom_MACD,
     custom_keltner_channel_signal,
-    add_volume_profile_fixed_range
+    add_volume_profile_fixed_range,
+    compute_session_feature,
+    get_triple_witching_timestamps,
+    triple_witching_tri_feature,
+    add_symbolic_reg_preds
 )
 from utils.get_data import by_BinanceVision
 from utils.ta_tools import (
@@ -40,15 +46,51 @@ TICKER = "BTCUSDT"
 ITV = "1h"
 MARKET_TYPE = "spot"
 DATA_TYPE = "klines"
-START_DATE = pd.Timestamp('2018-01-01')
-END_DATE = pd.Timestamp('2024-12-31')
+
+TRAIN_START = pd.Timestamp('2018-01-01', tz='UTC')
+TRAIN_END = pd.Timestamp('2023-12-31', tz='UTC')
+TEST_START = pd.Timestamp('2024-01-01', tz='UTC')
+
 PARAM_DIR = r"reports\feature_fits_quick"
 # Optimal parameters files
-CHAIKIN_PARAMS_FILE = 'chaikin_osc_pop2048_iters25_modemix.csv'
-KELTNER_PARAMS_FILE = 'keltner_channel_pop2048_iters25_modemix.csv'
-MACD_PARAMS_FILE = 'macd_pop2048_iters25_modemix.csv'
-STOCH_PARAMS_FILE = 'stoch_osc_pop1024_iters25_modemix.csv'
+CHAIKIN_PARAMS_FILE = 'chaikin_osc_pop8192_iters15_modemix_h01.csv'
+KELTNER_PARAMS_FILE = 'keltner_channel_pop4096_iters15_modemix_h01.csv'
+MACD_PARAMS_FILE = 'macd_pop8192_iters15_modemix_h01.csv'
+STOCH_PARAMS_FILE = 'stoch_osc_pop6144_iters15_modemix_h01.csv'
 
+sessions = {
+    # Ameryka Północna
+    'NYSE': {'start': time(9, 30), 'end': time(16, 0), 'timezone': 'America/New_York'},
+    'NASDAQ': {'start': time(9, 30), 'end': time(16, 0), 'timezone': 'America/New_York'},
+    # Europa
+    'LSE': {'start': time(8, 0), 'end': time(16, 30), 'timezone': 'Europe/London'},
+    'Xetra': {'start': time(9, 0), 'end': time(17, 30), 'timezone': 'Europe/Berlin'},
+    # Azja i Pacyfik
+    'TSE_Morning': {'start': time(9, 0), 'end': time(11, 30), 'timezone': 'Asia/Tokyo'},
+    'TSE_Afternoon': {'start': time(12, 30), 'end': time(15, 30), 'timezone': 'Asia/Tokyo'},
+    'SSE_Morning': {'start': time(9, 30), 'end': time(11, 30), 'timezone': 'Asia/Shanghai'},
+    'SSE_Afternoon': {'start': time(13, 0), 'end': time(15, 0), 'timezone': 'Asia/Shanghai'},
+    'BSE': {'start': time(9, 15), 'end': time(15, 30), 'timezone': 'Asia/Kolkata'},
+    'ASX': {'start': time(10, 0), 'end': time(16, 0), 'timezone': 'Australia/Sydney'},
+    'HOSE_Morning': {'start': time(9, 15), 'end': time(11, 30), 'timezone': 'Asia/Ho_Chi_Minh'},
+    'HOSE_Afternoon': {'start': time(13, 0), 'end': time(14, 30), 'timezone': 'Asia/Ho_Chi_Minh'},
+    'PSE_Morning': {'start': time(9, 30), 'end': time(12, 0), 'timezone': 'Asia/Manila'},
+    'PSE_Afternoon': {'start': time(13, 0), 'end': time(14, 45), 'timezone': 'Asia/Manila'},
+    'PSX': {'start': time(9, 32), 'end': time(15, 30), 'timezone': 'Asia/Karachi'},
+    'SET_Morning': {'start': time(10, 0), 'end': time(12, 30), 'timezone': 'Asia/Bangkok'},
+    'SET_Afternoon': {'start': time(14, 0), 'end': time(16, 30), 'timezone': 'Asia/Bangkok'},
+    'IDX': {'start': time(9, 0), 'end': time(15, 50), 'timezone': 'Asia/Jakarta'},
+    # Bliski Wschód i Afryka
+    'DFM': {'start': time(10, 0), 'end': time(15, 0), 'timezone': 'Asia/Dubai'},
+    'NSE_Nigeria': {'start': time(10, 0), 'end': time(14, 20), 'timezone': 'Africa/Lagos'},
+    'BIST_Morning': {'start': time(9, 30), 'end': time(12, 30), 'timezone': 'Europe/Istanbul'},
+    'BIST_Afternoon': {'start': time(14, 0), 'end': time(17, 30), 'timezone': 'Europe/Istanbul'},
+    'NSE_Kenya': {'start': time(9, 0), 'end': time(15, 0), 'timezone': 'Africa/Nairobi'},
+    # Ameryka Południowa
+    'B3': {'start': time(10, 0), 'end': time(16, 55), 'timezone': 'America/Sao_Paulo'},
+    'BCBA': {'start': time(11, 0), 'end': time(17, 0), 'timezone': 'America/Argentina/Buenos_Aires'},
+    'BVC': {'start': time(9, 30), 'end': time(15, 55), 'timezone': 'America/Bogota'},
+}
 
 if __name__ == "__main__":
     df = by_BinanceVision(
@@ -56,11 +98,10 @@ if __name__ == "__main__":
         interval=ITV,
         market_type=MARKET_TYPE,
         data_type=DATA_TYPE,
-        # start_date="2018-01-01 00:00:00",
-        # end_date="2025-01-01 00:00:00",
         split=False,
         delay=1_000_000,
     )
+    print('Loaded base dataset:')
     print(df.describe())
     ohlcv = df[["Open", "High", "Low", "Close", "Volume"]].to_numpy()
 
@@ -72,7 +113,7 @@ if __name__ == "__main__":
     chaikin_results['params'] = chaikin_results['params'].apply(ast.literal_eval)
 
     for idx, row in chaikin_results.iterrows():
-        print(f'row {row}')
+        print(f'Chaikin Oscillator idx {idx} matched {row["matched"]}')
         params = row['params']
 
         chaikin_oscillator = custom_ChaikinOscillator(
@@ -95,7 +136,7 @@ if __name__ == "__main__":
     keltner_results['params'] = keltner_results['params'].apply(ast.literal_eval)
 
     for idx, row in keltner_results.iterrows():
-        print(f'row {row}')
+        print(f'Keltner channel idx {idx} matched {row["matched"]}')
         params = row['params']
 
         signals = custom_keltner_channel_signal(
@@ -123,7 +164,7 @@ if __name__ == "__main__":
     macd_results['params'] = macd_results['params'].apply(ast.literal_eval)
 
     for idx, row in macd_results.iterrows():
-        print(f'row {row}')
+        print(f'MACD idx {idx} matched {row["matched"]}')
         params = row['params']
 
         macd, macd_signal = custom_MACD(
@@ -158,59 +199,77 @@ if __name__ == "__main__":
         )
         df[col_name] = signals
 
-        ### Stochastic Oscillator
-        stoch_results = pd.read_csv(path.join(PARAM_DIR, STOCH_PARAMS_FILE))
-        stoch_results['params'] = stoch_results['params'].apply(ast.literal_eval)
+    ### Stochastic Oscillator
+    stoch_results = pd.read_csv(path.join(PARAM_DIR, STOCH_PARAMS_FILE))
+    stoch_results['params'] = stoch_results['params'].apply(ast.literal_eval)
 
-        for idx, row in stoch_results.iterrows():
-            print(f'row {row}')
-            params = row['params']
+    for idx, row in stoch_results.iterrows():
+        print(f'Stochastic Oscillator idx {idx} matched {row["matched"]}')
+        params = row['params']
 
-            slowK, slowD = custom_StochasticOscillator(
-                ohlcv,
-                fastK_period=params["fastK_period"],
-                slowK_period=params["slowK_period"],
-                slowD_period=params["slowD_period"],
-                slowK_ma_type=params["slowK_ma_type"],
-                slowD_ma_type=params["slowD_ma_type"],
+        slowK, slowD = custom_StochasticOscillator(
+            ohlcv,
+            fastK_period=params["fastK_period"],
+            slowK_period=params["slowK_period"],
+            slowD_period=params["slowD_period"],
+            slowK_ma_type=params["slowK_ma_type"],
+            slowD_ma_type=params["slowD_ma_type"],
+        )
+
+        signal_func_mapping = {
+            "k_int_cross": k_int_cross,
+            "k_ext_cross": k_ext_cross,
+            "d_int_cross": d_int_cross,
+            "d_ext_cross": d_ext_cross,
+            "k_cross_int_os_ext_ob": k_cross_int_os_ext_ob,
+            "k_cross_ext_os_int_ob": k_cross_ext_os_int_ob,
+            "d_cross_int_os_ext_ob": d_cross_int_os_ext_ob,
+            "d_cross_ext_os_int_ob": d_cross_ext_os_int_ob,
+            "kd_cross": kd_cross,
+            "kd_cross_inside": kd_cross_inside,
+            "kd_cross_outside": kd_cross_outside,
+        }
+
+        func = signal_func_mapping[params["signal_type"]]
+        signals = np.array(
+            func(
+                k_line=slowK,
+                d_line=slowD,
+                oversold_threshold=params["oversold_threshold"],
+                overbought_threshold=params["overbought_threshold"],
             )
-
-            signal_func_mapping = {
-                "k_int_cross": k_int_cross,
-                "k_ext_cross": k_ext_cross,
-                "d_int_cross": d_int_cross,
-                "d_ext_cross": d_ext_cross,
-                "k_cross_int_os_ext_ob": k_cross_int_os_ext_ob,
-                "k_cross_ext_os_int_ob": k_cross_ext_os_int_ob,
-                "d_cross_int_os_ext_ob": d_cross_int_os_ext_ob,
-                "d_cross_ext_os_int_ob": d_cross_ext_os_int_ob,
-                "kd_cross": kd_cross,
-                "kd_cross_inside": kd_cross_inside,
-                "kd_cross_outside": kd_cross_outside,
-            }
-
-            func = signal_func_mapping[params["signal_type"]]
-            signals = np.array(
-                func(
-                    k_line=slowK,
-                    d_line=slowD,
-                    oversold_threshold=params["oversold_threshold"],
-                    overbought_threshold=params["overbought_threshold"],
-                )
-            ).astype(int)
-            df[col_name] = signals
+        ).astype(int)
+        df[col_name] = signals
 
     df = add_volume_profile_fixed_range(
         df,
         price_min=1,
         price_max=1_000_000,
-        step=5,
+        step=1,
         bins_back=100,
         bins_forward=100,
         vwap_col='HL2'
     )
 
-    df['Opened'] = pd.to_datetime(df['Opened'], errors='coerce')
-    df = df[(df['Opened'] >= START_DATE) & (df['Opened'] <= END_DATE)]
+    df = add_symbolic_reg_preds(df)
+    df = add_scaled_candle_patterns_indicators(df)
 
-    df.to_csv(path.join(MODELING_DATASET_DIR, "modeling_test.csv"), index=False)
+    df['Opened'] = pd.to_datetime(df['Opened'], errors='coerce', utc=True)
+    for session, info in sessions.items():
+        df[f'session_{session}_feature'] = df.apply(compute_session_feature, session_info=info, axis=1)
+
+    tw_hours = get_triple_witching_timestamps(df["Opened"].min(),
+                                              df["Opened"].max())
+
+    df["triple_witching_tri"] = df["Opened"].apply(
+        lambda ts: triple_witching_tri_feature(ts, tw_hours)
+    )
+    df["is_triple_witching_hour"] = df["Opened"].isin(tw_hours).astype(int)
+
+    df.to_csv(path.join(MODELING_DATASET_DIR, "full_modeling.csv"), index=False)
+
+    df_train = df[(df['Opened'] >= TRAIN_START) & (df['Opened'] <= TRAIN_END)]
+    df_train.to_csv(path.join(MODELING_DATASET_DIR, "train_modeling.csv"), index=False)
+
+    df_test = df[df['Opened'] >= TEST_START]
+    df_test.to_csv(path.join(MODELING_DATASET_DIR, "test_modeling.csv"), index=False)

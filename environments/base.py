@@ -1,4 +1,3 @@
-# from random import normalvariate
 import logging
 from csv import writer
 from datetime import datetime as dt
@@ -7,9 +6,9 @@ from random import randint
 from sys import stdout
 from time import time
 
-from gym import spaces, Env
+from gymnasium import spaces, Env
 from matplotlib.dates import date2num
-from numpy import array, mean, std, inf, searchsorted, float32, ascontiguousarray
+from numpy import array, mean, std, searchsorted, float32, ascontiguousarray
 from pandas import to_datetime
 
 from definitions import REPORT_DIR
@@ -276,7 +275,8 @@ class SpotBacktest(Env):
             self.df[self.start_step: self.end_step, self.exclude_cols_left:]
         )
         # return self.df[self.current_step, self.exclude_cols_left:]
-        return next(self.obs)
+        # return next(self.obs) # gym
+        return next(self.obs), {}  # gymnasium
 
     def _get_full_balance(self):
         if self.in_position:
@@ -432,114 +432,88 @@ class SpotBacktest(Env):
         return self._next_observation(), self.reward, self.done, False, self.info
 
     def _finish_episode(self):
+        # 1. House-keeping ― close report file, close any open position
         if self.report_to_file:
             self.report_file.close()
-        # print('BacktestEnv._finish_episode()')
         if self.in_position:
             self._sell(self.enter_price)
+
         self.done = True
-        # Summary
-        self.PNL_arrays = array(self.PLs_and_ratios)
+
+        # 2. Financial metrics
+        self.PNL_arrays = array(self.PLs_and_ratios)  # (pnl, ratio)
         self.balance += self.save_balance
         gain = self.balance - self.init_balance
         total_return = (self.balance / self.init_balance) - 1
-        risk_free_return = (self.df[self.end_step, 3] / self.df[self.start_step, 3]) - 1
-        above_free = total_return - risk_free_return
-        # if hasattr(self, 'leverage'):
-        # above_free /= self.leverage
+        benchmark_ret = (self.df[self.end_step, 3] /
+                         self.df[self.start_step, 3]) - 1  # BTC buy-&-hold
+        above_free = total_return - benchmark_ret
+
         hold_ratio = (
             self.profit_hold_counter / self.loss_hold_counter
-            if self.loss_hold_counter > 1 and self.profit_hold_counter > 1
+            if (self.loss_hold_counter > 1 and self.profit_hold_counter > 1)
             else 1.0
         )
+
+        # ――― PnL statistics ―――
         if len(self.PNL_arrays) > 1:
-            mean_pnl, stddev_pnl = mean(self.PNL_arrays[:, 0]), std(
-                self.PNL_arrays[:, 0]
-            )
+            mean_pnl, stddev_pnl = mean(self.PNL_arrays[:, 0]), std(self.PNL_arrays[:, 0])
+
             profits = self.PNL_arrays[:, 0][self.PNL_arrays[:, 0] > 0]
             losses = self.PNL_arrays[:, 0][self.PNL_arrays[:, 0] < 0]
-            profits_mean = mean(profits) if len(profits) > 1 else 0.0
-            losses_mean = mean(losses) if len(losses) > 1 else 0.0
-            losses_stddev = std(losses) if len(losses) > 1 else 0.0
+            profits_mean = mean(profits) if profits.size > 0 else 0.0
+            losses_mean = mean(losses) if losses.size > 0 else 0.0
+            losses_stddev = std(losses) if losses.size > 0 else 0.0
+
             PnL_trades_ratio = mean(self.PNL_arrays[:, 1])
             PnL_means_ratio = (
-                abs(profits_mean / losses_mean)
-                if profits_mean * losses_mean != 0
-                else 1.0
+                abs(profits_mean / losses_mean) if profits_mean * losses_mean != 0 else 1.0
             )
-            # slope_indicator = linear_slope_indicator(PnL_trades_ratio)
-            slope_indicator = 1.000
-            steps = self.max_steps if self.max_steps > 0 else self.total_steps
-            in_gain_indicator = self.with_gain_c / (
-                    steps
-                    - self.profit_hold_counter
-                    - self.loss_hold_counter
-                    - self.episode_orders
-            )
-            # if above_free > 0:
-            #     if hasattr(self, "leverage"):
-            #         above_free_factor = above_free
-            #         # above_free_factor = above_free / self.leverage**(1/3)
-            #         # above_free_factor = above_free/sqrt(self.leverage)
-            #     else:
-            #         above_free_factor = above_free
-            #     self.reward = (
-            #                           above_free_factor
-            #                           * self.episode_orders
-            #                           * PnL_trades_ratio
-            #                           * (hold_ratio ** (1 / 3))
-            #                           * (PnL_means_ratio ** (1 / 3))
-            #                           * in_gain_indicator
-            #                   ) / steps
-            # else:
-            #     self.reward = (
-            #                           above_free
-            #                           * self.episode_orders
-            #                           * 1
-            #                           / PnL_trades_ratio
-            #                           * 1
-            #                           / (hold_ratio ** (1 / 3))
-            #                           * 1
-            #                           / (PnL_means_ratio ** (1 / 3))
-            #                           * 1
-            #                           / in_gain_indicator
-            #                   ) / steps
-            # self.reward = total_return*100
-            self.reward = above_free
-        else:
-            mean_pnl, stddev_pnl = 0.0, 0.0
-            profits_mean, losses_mean, losses_stddev = 0.0, 0.0, 0.0
-            PnL_trades_ratio, PnL_means_ratio = 0.0, 0.0
-            in_gain_indicator = 0.0
-            slope_indicator = 0.000
-            self.reward = -inf
+            slope_indicator = 1.000  # placeholder
 
-        sharpe_ratio = (
-            (mean_pnl - risk_free_return) / stddev_pnl if stddev_pnl != 0 else -1
-        )
-        sortino_ratio = (
-            (total_return - risk_free_return) / losses_stddev
-            if losses_stddev != 0
-            else -1
-        )
-        # with_gain_c is not incremented when in position and while position is being opened, so we need to subtract those values from 'total_steps
-        # sl_losses_adj_gain = gain-self.SL_losses
-        # self.reward = copysign((abs(gain)**1.5)*self.PL_count_mean*sqrt(hold_ratio)*sqrt(self.PL_ratio)*sqrt(self.episode_orders), gain)/self.total_steps
-        # self.reward = copysign(gain**2, gain)+(self.episode_orders/sqrt(self.total_steps))+self.PL_count_mean+sqrt(hold_ratio)+sqrt(self.PL_ratio)
-        exec_time = time() - self.creation_t
-        # if self.balance >= 1_000_000:
-        #     self.verbose = True
-        if self.verbose:
-            # print('\n')
-            print(
-                f"Episode finished: gain:${gain:.2f}({total_return * 100:.2f}%), gain/step:${gain / (self.end_step - self.start_step):.5f}, cumulative_fees:${self.cumulative_fees:.2f}, SL_losses:${self.SL_losses:.2f} take_profits:{self.take_profits_c}\n"
-                f" stop_loss:{self.stop_loss}, take_profit:{self.take_profit}, save_ratio:{self.save_ratio}, saved_balance:${self.save_balance:.2f}\n"
-                f" trades:{self.episode_orders:_}, trades_with(profit/loss):{self.good_trades_count - 1:_}/{self.bad_trades_count - 1:_}, trades_avg(profit/loss):{profits_mean * 100:.2f}%/{losses_mean * 100:.2f}%, max(profit/drawdown):{self.max_profit * 100:.2f}%/{self.max_drawdown * 100:.2f}%\n"
-                f" PnL_trades_ratio:{PnL_trades_ratio:.3f}, PnL_means_ratio:{PnL_means_ratio:.3f}, hold_ratio:{hold_ratio:.3f}, PNL_mean:{mean_pnl * 100:.2f}%, geo_avg_return:{((self.balance / self.init_balance) ** (1 / (self.end_step - self.start_step)) - 1) * 100:.7f}%\n"
-                f" slope_indicator:{slope_indicator:.4f}, in_gain_indicator:{in_gain_indicator:.3f}, sharpe_ratio:{sharpe_ratio:.2f}, sortino_ratio:{sortino_ratio:.2f}, risk_free:{risk_free_return * 100:.2f}%, above_free:{above_free * 100:.2f}%\n"
-                f" reward:{self.reward:.8f} exec_time:{exec_time:.2f}s"
+            steps = self.max_steps if self.max_steps > 0 else self.total_steps
+            in_gain_indicator = self.with_gain_c / max(
+                steps - self.profit_hold_counter - self.loss_hold_counter - self.episode_orders,
+                1,
             )
-            # print('\n')
+        else:
+            mean_pnl = stddev_pnl = profits_mean = losses_mean = losses_stddev = 0.0
+            PnL_trades_ratio = PnL_means_ratio = in_gain_indicator = 0.0
+            slope_indicator = 0.000
+
+        # 3. Reward shaping ― spread the final bonus along the episode
+        episode_bonus = above_free
+        step_count = max(self.end_step - self.start_step, 1)
+        per_step_bonus = episode_bonus / step_count
+        self.reward = per_step_bonus  # value returned on the last .step()
+        self.terminal_bonus = episode_bonus  # fetched in step() when done==True
+
+        # 4. Additional ratios
+        sharpe_ratio = ((mean_pnl - benchmark_ret) / stddev_pnl) if stddev_pnl else -1
+        sortino_ratio = ((total_return - benchmark_ret) / losses_stddev) if losses_stddev else -1
+        exec_time = time() - self.creation_t
+
+        # 5. Console logging
+        if self.verbose:
+            print(
+                f"Episode finished: gain ${gain:.2f} ({total_return * 100:.2f}%), "
+                f"gain/step ${gain / step_count:.5f}, fees ${self.cumulative_fees:.2f}, "
+                f"SL_losses ${self.SL_losses:.2f}, take_profits {self.take_profits_c}\n"
+                f" stop_loss {self.stop_loss}, take_profit {self.take_profit}, "
+                f"save_ratio {self.save_ratio}, saved_balance ${self.save_balance:.2f}\n"
+                f" trades {self.episode_orders:_}, good/bad "
+                f"{self.good_trades_count - 1:_}/{self.bad_trades_count - 1:_}, "
+                f"avg(p/l) {profits_mean * 100:.2f}%/{losses_mean * 100:.2f}%\n"
+                f" PnL_trades_ratio {PnL_trades_ratio:.3f}, PnL_means_ratio {PnL_means_ratio:.3f}, "
+                f"hold_ratio {hold_ratio:.3f}, PNL_mean {mean_pnl * 100:.2f}%\n"
+                f" slope {slope_indicator:.4f}, in_gain {in_gain_indicator:.3f}, "
+                f"sharpe {sharpe_ratio:.2f}, sortino {sortino_ratio:.2f}, "
+                f"benchmark {benchmark_ret * 100:.2f}%, above_free {above_free * 100:.2f}%\n"
+                f" per_step_reward {per_step_bonus:.6f}, exec_time {exec_time:.2f}s"
+            )
+
+        # 6. Info dict for callbacks/monitors
+        self.info["episode"] = {"r": gain, "l": step_count}
         self.info = {
             "gain": gain,
             "PnL_means_ratio": PnL_means_ratio,

@@ -1,6 +1,6 @@
 from collections import deque
 
-from cv2 import cvtColor, imshow, waitKey, destroyAllWindows, COLOR_RGB2BGR, COLOR_RGBA2BGR
+from cv2 import cvtColor, imshow, waitKey, destroyAllWindows, COLOR_RGBA2BGR
 from matplotlib import dates as mpl_dates, pyplot as plt
 from mplfinance.original_flavor import candlestick_ohlc
 from numpy import array, where, max, min, frombuffer, uint8
@@ -30,7 +30,7 @@ class TradingGraph:
         # close all plots if there are open
         plt.close("all")
         # figsize attribute allows us to specify the width and height of a figure in unit inches
-        self.fig = plt.figure(figsize=(16, 9), dpi=75)
+        self.fig = plt.figure(figsize=(16, 9), dpi=120)
 
         # Create top subplot for price axis
         self.ax1 = plt.subplot2grid((6, 1), (0, 0), rowspan=5, colspan=1)
@@ -120,8 +120,8 @@ class TradingGraph:
 
     def render(self):
         ANNOT_TEXT_SIZE_MULTI = 0.13
-        LOWER_MARKER_SCALER = 0.99955
-        UPPER_MARKER_SCALER = 1.00045
+        LOWER_MARKER_SCALER = 0.99
+        UPPER_MARKER_SCALER = 1.01
         # print(f'render_arr[:, 0:5] {self.render_arr[:, 0:5]}')
         ohlc_equal = where(self.render_arr[:, 2] == self.render_arr[:, 3])
         # print(f'ohlc_equal {ohlc_equal}')

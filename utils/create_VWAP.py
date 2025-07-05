@@ -1,8 +1,10 @@
 import os
-import requests
-import pandas as pd
 from io import BytesIO
 from zipfile import ZipFile
+
+import pandas as pd
+import requests
+
 from definitions import DATA_DIR
 
 

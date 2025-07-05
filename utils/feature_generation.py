@@ -1,7 +1,12 @@
+import math
+from datetime import timedelta
 from functools import lru_cache
 
 import numpy as np
+import pandas as pd
+import pytz
 import talib
+from pandas.tseries.offsets import Week
 
 from .ta_tools import get_ma_from_source, get_1D_MA, any_ma_sig
 
@@ -247,6 +252,7 @@ def custom_ADX(
     #         f"{name} Kwantyle 25%: {q[0]:.2f}, 50% (Mediana): {q[1]:.2f}, 75%: {q[2]:.2f} Min: {np.min(data):.2f}, Max: {np.max(data):.2f}")
     return adx, plus_DI, minus_DI
 
+
 # def custom_keltner_channel_signal_old(np_df: np.ndarray, ma_type: int, ma_period: int, atr_period: int, atr_multi: float,
 #                                   source: str):
 #     def any_ma_sig(np_close: np.ndarray, np_xMA: np.ndarray, np_ATR: np.ndarray, atr_multi: float = 1.0) -> np.ndarray:
@@ -264,15 +270,15 @@ def custom_ADX(
 
 def add_volume_profile_fixed_range(
         df,
-        price_min = 1,
-        price_max = 1_000_000,
-        step = 5,
-        bins_back = 10,
-        bins_forward = 10,
+        price_min=1,
+        price_max=1_000_000,
+        step=5,
+        bins_back=10,
+        bins_forward=10,
         vwap_col='VWAP'
-    ):
+):
     if vwap_col == 'HL2':
-        df['HL2'] = (df['High'] + df['Low'])/2
+        df['HL2'] = (df['High'] + df['Low']) / 2
 
     price_levels = np.arange(price_min, price_max + step, step, dtype=float)
     bins = len(price_levels) - 1
@@ -298,10 +304,223 @@ def add_volume_profile_fixed_range(
             df.at[i, col] = 0.0 if curr_vol == 0 else (neigh_vol - curr_vol) / curr_vol
 
         start = get_bin_idx(low_i)
-        end   = get_bin_idx(high_i)
+        end = get_bin_idx(high_i)
         volume_profile[start:end + 1] += vol_i
 
     if vwap_col == 'HL2':
         df.drop(columns='HL2', inplace=True)
 
+    return df
+
+
+def compute_session_feature(row, session_info, time_col='Opened'):
+    timestamp = row[time_col]
+    if pd.isnull(timestamp):
+        return np.nan
+
+    # Ensure timestamp is tz-aware (UTC as base)
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.tz_localize("UTC")
+    tz = pytz.timezone(session_info['timezone'])
+    local_time = timestamp.astimezone(tz)
+    s, e = session_info['start'], session_info['end']
+    session_start = local_time.replace(hour=s.hour, minute=s.minute, second=0, microsecond=0)
+    session_end = local_time.replace(hour=e.hour, minute=e.minute, second=0, microsecond=0)
+
+    # Przed sesją
+    if local_time < session_start:
+        prev_day = local_time - timedelta(days=1)
+        prev_close = session_end.replace(year=prev_day.year, month=prev_day.month, day=prev_day.day)
+        off_time = (session_start - prev_close).total_seconds()
+        elapsed = (local_time - prev_close).total_seconds()
+        x = elapsed / off_time
+        return -math.sin(math.pi * x)
+    # Po sesji
+    elif local_time > session_end:
+        next_day = local_time + timedelta(days=1)
+        next_open = session_start.replace(year=next_day.year, month=next_day.month, day=next_day.day)
+        off_time = (next_open - session_end).total_seconds()
+        elapsed = (local_time - session_end).total_seconds()
+        x = elapsed / off_time
+        return -math.sin(math.pi * x)
+    # W trakcie sesji
+    else:
+        in_time = (session_end - session_start).total_seconds()
+        elapsed = (local_time - session_start).total_seconds()
+        x = elapsed / in_time
+        return math.sin(math.pi * x)
+
+
+def get_triple_witching_timestamps(start, end):
+    if start.tzinfo is None:
+        start = start.tz_localize('UTC')
+    if end.tzinfo is None:
+        end = end.tz_localize('UTC')
+
+    tz = pytz.timezone('America/New_York')
+    timestamps_utc = []
+    # +2 lata to bufor, żeby na pewno załapać się na "następny"
+    for year in range(start.year, end.year + 2):
+        for month in (3, 6, 9, 12):
+            d = pd.Timestamp(year=year, month=month, day=1, tz=tz)
+            first_friday = d + Week(weekday=4)
+            third_friday = first_friday + Week(2)
+            local_dt = third_friday.replace(hour=15, minute=0, second=0)
+            utc_dt = local_dt.tz_convert('UTC')
+            timestamps_utc.append(utc_dt)
+
+    # zatrzymujemy wszystko od start w górę…
+    dates = sorted([d for d in timestamps_utc if d >= start])
+
+    # …i JEŚLI ostatnia ≤ end, dorzucamy pierwszy punkt po end
+    if dates and dates[-1] <= end:
+        for d in timestamps_utc:
+            if d > end:
+                dates.append(d)
+                break
+
+    return dates
+
+
+def triple_witching_tri_feature(ts: pd.Timestamp,
+                                tw_datetimes: list[pd.Timestamp]) -> float:
+    """
+    Jednostkowa, zamknięta w [0, 1] funkcja:
+      • 1 dokładnie w chwili 3 Wiedźm,
+      • 0 w połowie odległości pomiędzy kolejnymi 3 Wiedźmami,
+      • liniowo ↓ i potem ↑ (trójkąt).
+    """
+    if pd.isnull(ts):
+        return np.nan
+    if ts.tzinfo is None:
+        ts = ts.tz_localize("UTC")
+
+    prev_tw = max((d for d in tw_datetimes if d <= ts), default=None)
+    next_tw = min((d for d in tw_datetimes if d > ts), default=None)
+
+    if prev_tw is None or next_tw is None:
+        return np.nan
+
+    total_sec = (next_tw - prev_tw).total_seconds()
+    elapsed = (ts - prev_tw).total_seconds()
+    x = elapsed / total_sec  # 0 → prev TW, 1 → next TW
+
+    return 2.0 * abs(x - 0.5)  # 1 na końcach, 0 w środku
+
+
+def is_exact_triple_witching_hour(ts, witching_datetimes):
+    # Dokładne dopasowanie timestampu do triple witching hour
+    return int(ts in witching_datetimes)
+
+
+def add_symbolic_reg_preds(df):
+    temp_cols = []
+    df["body"] = (df["Close"] - df["Open"]).abs()
+    df["upper_shadow"] = df["High"] - df[["Open", "Close"]].max(axis=1)
+    df["lower_shadow"] = df[["Open", "Close"]].min(axis=1) - df["Low"]
+    temp_cols.extend(["body", "upper_shadow", "lower_shadow"])
+    for col in ["Open", "High", "Low", "Close", "Volume", "body", "upper_shadow", "lower_shadow"]:
+        for l in range(1, 4):
+            col_name = f"{col}_lag{l}"
+            df[col_name] = df[col].shift(l)
+            temp_cols.append(col_name)
+    # boost 0
+    df["y_prev1_neg"] = 0.49966812 / (
+            np.less_equal(
+                df["Close"],
+                np.less_equal(df["upper_shadow"] - 0.99753463, 5.7205725)
+                + df["Open"] * 0.99753463,
+            )
+            - 0.49966812
+    )
+    df["y_prev1_pos"] = np.negative(
+        (
+                np.greater_equal(
+                    df["Open"],
+                    df["Close"]
+                    - np.maximum(
+                        df["upper_shadow"] * 2 + np.abs(0.7457582 * df["upper_shadow"]),
+                        np.abs(df["Open"] / df["Volume"]),
+                    ),
+                )
+                * 2.001982
+        )
+        - 1.0
+    )
+
+    # boost 1
+    df["y_prev2_neg"] = np.maximum(
+        df["y_prev1_neg"],
+        np.minimum(
+            np.minimum(
+                np.minimum(df["Open_lag1"] - df["Close_lag1"], df["lower_shadow_lag1"])
+                - (
+                        np.greater_equal(0.87595224, -2.0697224)
+                        + np.abs(np.maximum(df["Close"] - df["Low_lag1"], 0))
+                ),
+                np.greater_equal(
+                    df["upper_shadow_lag1"] + df["upper_shadow"] * df["body_lag1"],
+                    df["lower_shadow"],
+                ),
+            ),
+            -df["y_prev1_pos"],
+        ),
+    )
+    df["y_prev2_pos"] = np.minimum(
+        np.maximum(
+            -1.0,
+            df["y_prev1_pos"] * df["body_lag1"]
+            + df["lower_shadow"]
+            * (
+                    (0.14052474 * df["lower_shadow"] + df["Close"])
+                    - ((df["body_lag1"] + df["Open_lag1"]) / 0.99850434)
+                    - np.greater_equal(
+                df["upper_shadow"],
+                np.maximum(df["y_prev1_pos"], 0) + df["body_lag1"],
+            )
+            ),
+        ),
+        -df["y_prev1_neg"],
+    )
+
+    # boost 2
+    df["y_prev3_neg"] = np.minimum(
+        np.maximum(
+            1.6965557
+            + (
+                    np.less_equal(
+                        np.minimum(
+                            df["High_lag2"]
+                            - np.minimum(
+                                df["Open_lag2"], df["High"] - df["upper_shadow_lag1"]
+                            )
+                            - df["lower_shadow"],
+                            df["lower_shadow_lag3"],
+                        ),
+                        df["Close_lag2"],
+                    )
+                    - np.maximum(df["Low_lag1"], 0)
+            ),
+            df["y_prev2_pos"],
+        ),
+        df["y_prev2_neg"],
+    )
+    df["y_prev3_pos"] = np.minimum(
+        np.minimum(
+            df["y_prev2_pos"],
+            np.maximum(
+                df["Close"]
+                - np.negative(
+                    (df["upper_shadow_lag2"] * -0.56393766) - df["Close_lag3"]
+                ),
+                0,
+            )
+            - np.less_equal(
+                df["Volume_lag3"], df["Open_lag3"] * np.negative(-0.56393766)
+            ),
+        ),
+        (df["lower_shadow_lag1"] + df["lower_shadow_lag3"]) - df["y_prev2_pos"],
+    )
+
+    df.drop(columns=temp_cols, inplace=True)
     return df

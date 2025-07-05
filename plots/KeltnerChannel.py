@@ -11,7 +11,8 @@ from utils.ta_tools import get_ma_from_source, get_1D_MA
 ACTIONS_FULLPATH = os.path.join(
     REPORT_DIR, "optimal_actions", "final_combined_actions.csv"
 )
-settings = {'ma_type': 20, 'atr_ma_type': 21, 'ma_period': 8, 'atr_period': 9, 'atr_multi': 0.6115465660842656, 'source': 'low'}
+settings = {'ma_type': 20, 'atr_ma_type': 21, 'ma_period': 8, 'atr_period': 9, 'atr_multi': 0.6115465660842656,
+            'source': 'low'}
 
 
 def main():

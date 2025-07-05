@@ -25,6 +25,7 @@ ENV_KWARGS = {
     "coin_step": 0.00001,
     "verbose": True,
     "visualize": True,
+    "render_range": 80,
     "report_to_file": True,
 }
 
