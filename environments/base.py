@@ -1,14 +1,16 @@
 import logging
+# from random import randint
+import random as py_random
 from csv import writer
 from datetime import datetime as dt
 from math import copysign, floor, sqrt
-from random import randint
 from sys import stdout
 from time import time
 
 from gymnasium import spaces, Env
+from gymnasium.utils import seeding
 from matplotlib.dates import date2num
-from numpy import array, mean, std, searchsorted, float32, ascontiguousarray
+from numpy import array, mean, std, searchsorted, float32, ascontiguousarray, random
 from pandas import to_datetime
 
 from definitions import REPORT_DIR
@@ -38,6 +40,7 @@ class SpotBacktest(Env):
             render_range=120,
             verbose=True,
             report_to_file=False,
+            seed=37,
             *args,
             **kwargs,
     ):
@@ -77,6 +80,13 @@ class SpotBacktest(Env):
         self._initialize_parameters()
         self._setup_visualization()
         self._setup_reporting()
+        self.seed(seed)
+
+    def seed(self, seed):
+        self.gym_np_random, seed = seeding.np_random(seed)
+        py_random.seed(seed)
+        random.seed(seed)
+        return [seed]
 
     def _process_input_data(self):
         if self.df_input.isnull().values.any():
@@ -265,7 +275,8 @@ class SpotBacktest(Env):
         self.max_balance = self.min_balance = self.balance
         self.save_balance = 0.0
         if self.max_steps > 0:
-            self.start_step = randint(self.start_index, self.end_index - self.max_steps)
+            # self.start_step = randint(self.start_index, self.end_index - self.max_steps) # older version
+            self.start_step = self.gym_np_random.integers(self.start_index, self.end_index - self.max_steps + 1)
             self.end_step = self.start_step + self.max_steps - 1
         else:
             self.start_step = self.start_index
@@ -278,14 +289,17 @@ class SpotBacktest(Env):
         # return next(self.obs) # gym
         return next(self.obs), {}  # gymnasium
 
-    def _get_full_balance(self):
+    def _get_full_balance(self, include_position=False):
         if self.in_position:
-            _pnl = self.df[self.current_step, 3] / self.enter_price - 1
-            return (
-                    self.balance
-                    + (self.position_size + (self.position_size * _pnl))
-                    + self.save_balance
-            )
+            if include_position:
+                _pnl = self.df[self.current_step, 3] / self.enter_price - 1
+                return (
+                        self.balance
+                        + (self.position_size + (self.position_size * _pnl))
+                        + self.save_balance
+                )
+            else:
+                return self.prev_bal
         else:
             return self.balance + self.save_balance
 
@@ -393,6 +407,7 @@ class SpotBacktest(Env):
         self.absolute_profit = 0.0
         self.position_closed = 0
         self.sl_trigger, self.tp_trigger = 0, 0
+        self.passive_counter += 1
         if self.in_position:
             high, low, close = self.df[self.current_step, 1:4]
             # print(f'low: {low}, close: {close}, self.enter_price: {self.enter_price}')
@@ -420,7 +435,7 @@ class SpotBacktest(Env):
         ):
             self._finish_episode()
         else:
-            self.passive_counter += 1
+            # self.passive_counter += 1 # no penalty when in position
             if self.init_balance < self.balance + self.save_balance:
                 self.with_gain_c += 1
         # Older version:
@@ -516,6 +531,7 @@ class SpotBacktest(Env):
         self.info["episode"] = {"r": gain, "l": step_count}
         self.info = {
             "gain": gain,
+            "above_benchmark": above_free,
             "PnL_means_ratio": PnL_means_ratio,
             "PnL_trades_ratio": PnL_trades_ratio,
             "hold_ratio": hold_ratio,

@@ -54,7 +54,7 @@ TEST_START = pd.Timestamp('2024-01-01', tz='UTC')
 PARAM_DIR = r"reports\feature_fits_quick"
 # Optimal parameters files
 CHAIKIN_PARAMS_FILE = 'chaikin_osc_pop8192_iters15_modemix_h01.csv'
-KELTNER_PARAMS_FILE = 'keltner_channel_pop4096_iters15_modemix_h01.csv'
+KELTNER_PARAMS_FILE = 'keltner_channel_pop8192_iters15_modemix_h01.csv'
 MACD_PARAMS_FILE = 'macd_pop8192_iters15_modemix_h01.csv'
 STOCH_PARAMS_FILE = 'stoch_osc_pop6144_iters15_modemix_h01.csv'
 

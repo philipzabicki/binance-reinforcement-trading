@@ -37,7 +37,7 @@ TERMINATION = DefaultMultiObjectiveTermination(
 
 PROBLEM = ChaikinOscillatorFitting
 ALGORITHM = MixedVariableGA
-POP_SIZE = 8192
+POP_SIZE = 32
 MAX_ITERATIONS = 15
 SEARCH_MODE = 'mix'
 

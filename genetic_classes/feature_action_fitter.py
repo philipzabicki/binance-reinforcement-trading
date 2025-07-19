@@ -71,16 +71,10 @@ class KeltnerChannelFitting(ElementwiseProblem):
                 penalty = missing_ratio * self.target_segments_count
                 out["F"] = penalty
             else:
-                match_recall = (match_count / self.target_segments_count)
-                match_precision = match_count / (nonzero_signals + epsilon)
-                # self.recall.append(match_recall)
-                # self.precision.append(match_precision)
-                ratios = (match_recall + match_precision)
+                ratios = ((match_count / self.target_segments_count) + (match_count / (nonzero_signals + epsilon))) / 2
                 if self.mode == 'mix':
-                    rev_dist = (1 / distance.euclidean(self.actions, raw_signals, w=self.weights))
-                    # self.distances.append(rev_dist)
+                    rev_dist = 1 / distance.euclidean(self.actions, raw_signals, w=self.weights)
                     out["F"] = -1 * (ratios + rev_dist)
-                    # print(f'avg_rec {np.mean(np.array(self.recall))} avg_prec {np.mean(np.array(self.precision))} avg_dist {np.mean(np.array(self.distances))}')
                 else:
                     out["F"] = -ratios
         elif self.mode == 'distance':
