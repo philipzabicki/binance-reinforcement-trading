@@ -49,7 +49,7 @@ class TensorboardCallback(BaseCallback):
 
 
 class CustomCNNBiLSTMAttentionFeatureExtractor(BaseFeaturesExtractor):
-    def __init__(self, observation_space: Space, features_dim: int = 390):
+    def __init__(self, observation_space: Space, features_dim: int):
         super(CustomCNNBiLSTMAttentionFeatureExtractor, self).__init__(
             observation_space, features_dim
         )
@@ -207,7 +207,7 @@ MODEL_PARAMETERS = {
     # Final probability reached after exploration_fraction * total_timesteps
     "exploration_final_eps": 0.0,
     # Portion of training time devoted to linear ε decay
-    "exploration_fraction": 0.25,
+    "exploration_fraction": 0.5,
     "stats_window_size": 10,
     "seed": SEED
 }
@@ -240,9 +240,9 @@ if __name__ == "__main__":
     total_mem = df_train.memory_usage(deep=True).sum()
     print(f"\nTotal memory: {total_mem / (1024 ** 2):.2f} MB")
 
-    for p in [0.45, 0.5, 0.55]:
+    for p in [0.00002, 0.00003, 0.00004, 0.00006, 0.00007]:
         # TOTAL_ENV_STEPS = p
-        MODEL_PARAMETERS["exploration_fraction"] = p
+        MODEL_PARAMETERS["learning_rate"] = p
         # MODEL_PARAMETERS["gamma"] = p
 
         timestamp = dt.now().strftime("%Y%m%d_%H%M%S")
@@ -275,7 +275,7 @@ if __name__ == "__main__":
             callback=TensorboardCallback(),
             total_timesteps=TOTAL_ENV_STEPS,
             progress_bar=True,
-            log_interval=1,
+            log_interval=NUM_ENVS,
         )
 
         _date = str(dt.today()).replace(":", "-")[:-7]

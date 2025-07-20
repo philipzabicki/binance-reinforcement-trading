@@ -10,6 +10,10 @@ import numpy as np
 import pandas as pd
 # from pymoo.algorithms.soo.nonconvex.ga import GA
 from pymoo.core.mixed import MixedVariableGA
+from pymoo.operators.mutation.pm import PolynomialMutation as PM
+from pymoo.operators.crossover.sbx import SBX
+from pymoo.operators.repair.rounding import RoundingRepair
+from pymoo.core.variable import Real, Integer
 # import matplotlib.pyplot as plt
 from pymoo.core.mixed import (
     MixedVariableMating,
@@ -28,15 +32,27 @@ from utils.feature_generation import adl_initializer, custom_ChaikinOscillator
 # from utils.miscellaneous import convert_variables
 from utils.ta_tools import extract_segments_indices, ChaikinOscillator_signal
 
-CPU_CORES_COUNT = 17
-print(f"CPUs used: {CPU_CORES_COUNT}")
-
-TERMINATION = DefaultMultiObjectiveTermination(
-    ftol=0.0005, period=5, n_max_gen=100, n_max_evals=1_000_000
-)
-
 PROBLEM = ChaikinOscillatorFitting
 ALGORITHM = MixedVariableGA
+TERMINATION = DefaultMultiObjectiveTermination(
+    # cvtol=1e-8, # default 1e-8
+    xtol=0.00005, # default 0.0005
+    ftol=0.00001, # default 0.005
+    period=7,
+    n_max_gen=100,
+    n_max_evals=1_000_000
+)
+MATING = MixedVariableMating(
+    mutation={Real: PM(eta=10),
+              Integer: PM(eta=10, vtype=float, repair=RoundingRepair())
+              },
+    crossover={Real: SBX(eta=5),
+               Integer: SBX(eta=5, vtype=float, repair=RoundingRepair())
+               },
+    eliminate_duplicates=MixedVariableDuplicateElimination())
+
+CPU_CORES_COUNT = 17
+print(f"CPUs used: {CPU_CORES_COUNT}")
 POP_SIZE = 32
 MAX_ITERATIONS = 15
 SEARCH_MODE = 'mix'
@@ -67,6 +83,7 @@ def run_half(df_h: pd.DataFrame,
         f"chaikin_osc_pop{POP_SIZE}_iters{max_iterations}_mode{SEARCH_MODE}_h{half_idx}.csv"
     )
 
+    os.makedirs(RESULTS_DIR, exist_ok=True)
     checkpoint = load_checkpoint(checkpoint_file)
     if checkpoint:
         iteration = checkpoint["iteration"]
@@ -97,9 +114,7 @@ def run_half(df_h: pd.DataFrame,
             algorithm = ALGORITHM(
                 pop_size=POP_SIZE,
                 sampling=MixedVariableSampling(),
-                mating=MixedVariableMating(
-                    eliminate_duplicates=MixedVariableDuplicateElimination()
-                ),
+                mating=MATING,
                 eliminate_duplicates=MixedVariableDuplicateElimination(),
             )
 
