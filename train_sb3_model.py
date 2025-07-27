@@ -49,18 +49,23 @@ class TensorboardCallback(BaseCallback):
 
 
 class CustomCNNBiLSTMAttentionFeatureExtractor(BaseFeaturesExtractor):
-    def __init__(self, observation_space: Space, features_dim: int):
+    def __init__(self,
+                 observation_space,
+                 features_dim: int = 128,
+                 lstm_hidden_size: int = 64,
+                 n_heads: int = 8,
+                 attn_dropout: float = 0.0):
         super(CustomCNNBiLSTMAttentionFeatureExtractor, self).__init__(
             observation_space, features_dim
         )
         n_time_steps, n_features = observation_space.shape
         self.cnn = nn.Sequential(
-            nn.Conv1d(in_channels=n_features, out_channels=512, kernel_size=3, padding=1),
-            nn.BatchNorm1d(512),
+            nn.Conv1d(in_channels=n_features, out_channels=1024, kernel_size=3, padding=1),
+            nn.BatchNorm1d(1024),
             nn.ReLU(),
-            nn.Dropout(p=0.25),
+            #nn.Dropout(p=0.5),
 
-            nn.Conv1d(512, 128, kernel_size=5, padding=2),  # z 256 na 128
+            nn.Conv1d(1024, 128, kernel_size=5, padding=2),  # z 256 na 128
             nn.ReLU(),
 
             nn.Conv1d(128, 64, kernel_size=7, padding=3),  # z 128 na 64
@@ -73,25 +78,35 @@ class CustomCNNBiLSTMAttentionFeatureExtractor(BaseFeaturesExtractor):
             batch_first=True,
             bidirectional=True,
         )
-        self.attention = nn.Linear(64 * 2, 1)
+        lstm_out_dim = lstm_hidden_size * 2  # because bidirectional
+
+        # --- Multi‑Head self‑attention -------------------------------------------
+        self.mha = nn.MultiheadAttention(
+            embed_dim=lstm_out_dim,
+            num_heads=n_heads,
+            dropout=attn_dropout,
+            batch_first=True
+        )
+
+        # Final projection to the size expected by the policy head
+        self.proj = nn.Linear(lstm_out_dim, features_dim)
 
     def forward(self, observations: th.Tensor) -> th.Tensor:
-        x = observations
-        x = x.permute(0, 2, 1)
-        # print(f'x after permute: {x.shape}')
-        x = self.cnn(x)
-        # print(f'x after cnn: {x.shape}')
-        x = x.permute(0, 2, 1)
-        # print(f'x after 2nd permute: {x.shape}')
-        lstm_out, _ = self.lstm(x)
-        # print(f'x lstm output: {lstm_out.shape}')
-        attention_weights = F.softmax(self.attention(lstm_out), dim=1)
-        # print(f'attention_weights: {attention_weights.shape}')
-        lstm_out = lstm_out * attention_weights
-        # print(f'lstm_out * attention_weights {lstm_out.shape}')
-        lstm_out = lstm_out.sum(dim=1)
-        # print(f'lstm_out.sum(dim=1) {lstm_out.shape}')
-        return lstm_out
+        # observations: (batch, time, features)
+        x = observations.permute(0, 2, 1)  # to (batch, features, time)
+        x = self.cnn(x)  # (batch, 64, time)
+        x = x.permute(0, 2, 1)  # back to (batch, time, 64)
+
+        lstm_out, _ = self.lstm(x)  # (batch, time, 128)
+
+        # Self‑attention (queries = keys = values = lstm_out)
+        attn_out, _ = self.mha(lstm_out, lstm_out, lstm_out)  # (batch, time, 128)
+
+        # Pool across the temporal dimension.
+        # Mean pooling keeps dimensionality and is robust when no CLS token exists.
+        pooled = attn_out.mean(dim=1)  # (batch, 128)
+
+        return self.proj(pooled)  # (batch, features_dim)
 
 
 def seed_everything(seed):
@@ -185,7 +200,7 @@ ENV_KWARGS = {
 }
 MODEL_PARAMETERS = {
     # Maximum number of transitions kept in memory
-    "buffer_size": 100_000,
+    "buffer_size": 80_000,
     # Minibatch size drawn from the buffer for a single gradient update
     "batch_size": 128,
     # Number of environment steps collected before learning starts (warm-up)
@@ -240,10 +255,11 @@ if __name__ == "__main__":
     total_mem = df_train.memory_usage(deep=True).sum()
     print(f"\nTotal memory: {total_mem / (1024 ** 2):.2f} MB")
 
-    for p in [0.00002, 0.00003, 0.00004, 0.00006, 0.00007]:
-        # TOTAL_ENV_STEPS = p
-        MODEL_PARAMETERS["learning_rate"] = p
-        # MODEL_PARAMETERS["gamma"] = p
+    for p in range(0, 11):
+        print(f'Testing p: {p/10}')
+        # TOTAL_ENV_STEPS = p*NUM_ENVS
+        # MODEL_PARAMETERS["exploration_fraction"] = p
+        MODEL_PARAMETERS["gamma"] = p/10
 
         timestamp = dt.now().strftime("%Y%m%d_%H%M%S")
         parts = [_fmt(k, ENV_KWARGS[k]) for k in ENV_ORDER] + \

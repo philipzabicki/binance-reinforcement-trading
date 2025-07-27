@@ -16,6 +16,10 @@ TRANGE_BYTES = None
 TRANGE_SHAPE = None
 ADL_BYTES = None
 ADL_SHAPE = None
+UP_MOVE_BYTES = None
+UP_MOVE_SHAPE = None
+DOWN_MOVE_BYTES = None
+DOWN_MOVE_SHAPE = None
 
 
 def keltner_channel_initializer(ohlcv: np.ndarray):
@@ -26,6 +30,31 @@ def keltner_channel_initializer(ohlcv: np.ndarray):
     true_range = talib.TRANGE(*ohlcv[:, 1:4].T)
     TRANGE_BYTES = true_range.tobytes()
     TRANGE_SHAPE = true_range.shape
+
+
+def adx_initializer(ohlcv: np.ndarray):
+    # print(f"adx_initializer ohlcv: {ohlcv}")
+    global TRANGE_BYTES, TRANGE_SHAPE, UP_MOVE_BYTES, UP_MOVE_SHAPE, DOWN_MOVE_BYTES, DOWN_MOVE_SHAPE
+    # Precompute the byte representation and shape of the constant array.
+    true_range = talib.TRANGE(*ohlcv[:, 1:4].T)
+    TRANGE_BYTES = true_range.tobytes()
+    TRANGE_SHAPE = true_range.shape
+
+    prev_high = np.roll(ohlcv[:, 1], 1)
+    prev_high[0] = ohlcv[0, 1]
+    prev_low = np.roll(ohlcv[:, 2], 1)
+    prev_low[0] = ohlcv[0, 2]
+
+    high_diff = ohlcv[:, 1] - prev_high
+    low_diff = prev_low - ohlcv[:, 2]
+    up_move = np.where((high_diff > low_diff) & (high_diff > 0), high_diff, 0.0)
+    down_move = np.where((low_diff > high_diff) & (low_diff > 0), low_diff, 0.0)
+
+    UP_MOVE_BYTES = up_move.tobytes()
+    UP_MOVE_SHAPE = up_move.shape
+    DOWN_MOVE_BYTES = down_move.tobytes()
+    DOWN_MOVE_SHAPE = down_move.shape
+
 
 
 def adl_initializer(ohlcv: np.ndarray):
@@ -193,64 +222,44 @@ def custom_keltner_channel_signal(
     )
 
 
-def custom_ADX(
-        ohlcv: np.ndarray,
-        true_range: np.ndarray,
-        atr_period: int,
-        posDM_period: int,
-        negDM_period: int,
-        adx_period: int,
-        ma_type_atr: int,
-        ma_type_posDM: int,
-        ma_type_negDM: int,
-        ma_type_adx: int,
-):
-    # print('')
-    high = ohlcv[:, 1]
-    low = ohlcv[:, 2]
+def custom_ADX(ohlcv,
+               atr_period,
+               posDM_period,
+               negDM_period,
+               adx_period,
+               ma_type_atr,
+               ma_type_posDM,
+               ma_type_negDM,
+               ma_type_adx):
+    global UP_MOVE_BYTES, UP_MOVE_SHAPE, DOWN_MOVE_BYTES, DOWN_MOVE_SHAPE
+    if UP_MOVE_BYTES is None or UP_MOVE_SHAPE is None or DOWN_MOVE_BYTES is None or DOWN_MOVE_SHAPE is None:
+        adx_initializer(ohlcv)
+        # raise ValueError("Global OHLCV data not initialized!")
 
-    prev_high = np.roll(high, 1)
-    prev_high[0] = high[0]
+    TR_smooth = custom_ATR_cache(ma_type_atr, atr_period)
+    pos_DM_smooth = get_1D_MA(np.frombuffer(UP_MOVE_BYTES, dtype=np.float64).reshape(UP_MOVE_SHAPE),
+                              ma_type_posDM, posDM_period)
+    neg_DM_smooth = get_1D_MA(np.frombuffer(DOWN_MOVE_BYTES, dtype=np.float64).reshape(DOWN_MOVE_SHAPE),
+                              ma_type_negDM, negDM_period)
 
-    prev_low = np.roll(low, 1)
-    prev_low[0] = low[0]
+    # Ensure non-negative DM and safe denominators
+    pos_DM_smooth = np.maximum(pos_DM_smooth, 0.0)
+    neg_DM_smooth = np.maximum(neg_DM_smooth, 0.0)
+    tiny = 1e-12  # safer than float64 eps for price scales
 
-    up_move = high - prev_high
-    down_move = prev_low - low
+    # plus/minus DI as percents in a numerically safe way
+    plus = np.divide(pos_DM_smooth, TR_smooth, out=np.zeros_like(TR_smooth), where=np.abs(TR_smooth) > tiny)
+    minus = np.divide(neg_DM_smooth, TR_smooth, out=np.zeros_like(TR_smooth), where=np.abs(TR_smooth) > tiny)
+    plus_DI = 100.0 * plus
+    minus_DI = 100.0 * minus
 
-    pos_DM_raw = np.where((up_move > down_move) & (up_move > 0), up_move, 0.0)
-    neg_DM_raw = np.where((down_move > up_move) & (down_move > 0), down_move, 0.0)
+    # Robust DX in [0, 1], then scale by 100
+    denom = np.abs(plus_DI) + np.abs(minus_DI)
+    DX = np.divide(np.abs(plus_DI - minus_DI), denom, out=np.zeros_like(denom), where=denom > tiny)
+    DX = np.clip(DX, 0.0, 1.0)
+    DX_raw = 100.0 * DX
 
-    TR_smooth = get_1D_MA(true_range, ma_type_atr, atr_period)
-    # print(f"TR_smooth {np.quantile(TR_smooth, [0.25, 0.5, 0.75])}")
-    pos_DM_smooth = get_1D_MA(pos_DM_raw, ma_type_posDM, posDM_period)
-    # print(f"pos_DM_smooth {np.quantile(pos_DM_smooth, [0.25, 0.5, 0.75])}")
-    neg_DM_smooth = get_1D_MA(neg_DM_raw, ma_type_negDM, negDM_period)
-    # print(f"neg_DM_smooth {np.quantile(neg_DM_smooth, [0.25, 0.5, 0.75])}")
-
-    with np.errstate(divide="ignore", invalid="ignore"):
-        plus_DI = 100.0 * np.nan_to_num(
-            pos_DM_smooth / TR_smooth, posinf=0.0, neginf=0.0
-        )
-        minus_DI = 100.0 * np.nan_to_num(
-            neg_DM_smooth / TR_smooth, posinf=0.0, neginf=0.0
-        )
-
-    with np.errstate(divide="ignore", invalid="ignore"):
-        DX_raw = 100.0 * np.nan_to_num(
-            np.abs(plus_DI - minus_DI) / (plus_DI + minus_DI)
-        )
-
-    adx = get_1D_MA(DX_raw, ma_type_adx, adx_period)
-    # print(f"plus_DI {np.quantile(plus_DI, [0.25, 0.5, 0.75])}")
-    # print(f"minus_DI {np.quantile(minus_DI, [0.25, 0.5, 0.75])}")
-    # print(f"DX_raw {np.quantile(DX_raw, [0.25, 0.5, 0.75])}")
-
-    # for name, data in [('ADX', adx), ('+DI', plus_DI), ('-DI', minus_DI)]:
-    #     q = np.quantile(data, [0.25, 0.5, 0.75])
-    #     print(
-    #         f"{name} Kwantyle 25%: {q[0]:.2f}, 50% (Mediana): {q[1]:.2f}, 75%: {q[2]:.2f} Min: {np.min(data):.2f}, Max: {np.max(data):.2f}")
-    return adx, plus_DI, minus_DI
+    return get_1D_MA(DX_raw, ma_type_adx, adx_period), plus_DI, minus_DI
 
 
 # def custom_keltner_channel_signal_old(np_df: np.ndarray, ma_type: int, ma_period: int, atr_period: int, atr_multi: float,

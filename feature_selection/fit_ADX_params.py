@@ -1,13 +1,10 @@
-import cProfile
-import io
 import os
-import pstats
 import time
 # import numpy as np
 from multiprocessing import Pool
 
-import numpy as np
 import pandas as pd
+import numpy as np
 # from pymoo.algorithms.soo.nonconvex.ga import GA
 from pymoo.core.mixed import MixedVariableGA
 from pymoo.operators.mutation.pm import PolynomialMutation as PM
@@ -24,27 +21,20 @@ from pymoo.core.problem import StarmapParallelization
 from pymoo.optimize import minimize
 from pymoo.termination.default import DefaultMultiObjectiveTermination
 
-from common import save_checkpoint, load_checkpoint, build_half_df
+from common import save_checkpoint, load_checkpoint, build_bin_df, _equal_freq_assignments
 from definitions import REPORT_DIR
-from genetic_classes.feature_action_fitter import (
-    MACDFitting,
+from genetic_classes.feature_action_fitter import ADXFitting
+from utils.feature_generation import (
+    custom_ADX,
+    adx_initializer,
 )
-from utils.feature_generation import custom_MACD
-from utils.feature_generation import ohlcv_initializer
-from utils.ta_tools import (
-    MACD_lines_cross_with_zero,
-    MACD_lines_cross,
-    MACD_lines_approaching_cross_with_zero,
-    MACD_lines_approaching_cross,
-    MACD_signal_line_zero_cross,
-    MACD_line_zero_cross,
-    MACD_histogram_reversal,
-)
-# from utils.miscellaneous import convert_variables
-from utils.ta_tools import extract_segments_indices
+from utils.ta_tools import (extract_segments_indices,
+                            ADX_trend_signal,
+                            ADX_DIs_cross_above_threshold,
+                            ADX_DIs_approaching_cross_above_threshold)
 
 
-PROBLEM = MACDFitting
+PROBLEM = ADXFitting
 ALGORITHM = MixedVariableGA
 TERMINATION = DefaultMultiObjectiveTermination(
     # cvtol=1e-8, # default 1e-8
@@ -55,43 +45,40 @@ TERMINATION = DefaultMultiObjectiveTermination(
     n_max_evals=1_000_000
 )
 MATING = MixedVariableMating(
-    mutation={Real: PM(eta=10),
-              Integer: PM(eta=10, vtype=float, repair=RoundingRepair())
+    mutation={Real: PM(eta=7),
+              Integer: PM(eta=7, vtype=float, repair=RoundingRepair())
               },
-    crossover={Real: SBX(eta=5),
-               Integer: SBX(eta=5, vtype=float, repair=RoundingRepair())
+    crossover={Real: SBX(eta=3),
+               Integer: SBX(eta=3, vtype=float, repair=RoundingRepair())
                },
     eliminate_duplicates=MixedVariableDuplicateElimination())
 
-CPU_CORES_COUNT = 17
+CPU_CORES_COUNT = 16
 print(f"CPUs used: {CPU_CORES_COUNT}")
 POP_SIZE = 8192
-MAX_ITERATIONS = 15
+MAX_ITERATIONS = 10
+N_SPLITS = 3
 SEARCH_MODE = 'mix'
 
 RESULTS_DIR = os.path.join(REPORT_DIR, "feature_fits_quick")
 ACTIONS_FULLPATH = os.path.join(
     REPORT_DIR, "optimal_actions", "final_combined_actions.csv"
 )
-CHECKPOINT_FILE = os.path.join(RESULTS_DIR, f"macd_checkpoint_pop{POP_SIZE}_iters{MAX_ITERATIONS}_{SEARCH_MODE}.pkl")
+CHECKPOINT_FILE = os.path.join(RESULTS_DIR,
+                               f"ADX_checkpoint_pop{POP_SIZE}_iters{MAX_ITERATIONS}_{SEARCH_MODE}.pkl")
 
 
 def pool_initializer(ohlcv_np):
-    ohlcv_initializer(ohlcv_np)
+    adx_initializer(ohlcv_np)
 
-
-def run_half(df_h: pd.DataFrame,
-             half_idx: int,
-             ohlcv_np: np.ndarray,
-             max_iterations: int = 15):
-    """
-    GA fitting pass for MACD on the selected half of data
-    (0 = ≤ median, 1 = > median). Checkpoints/outputs carry suffix _h{half_idx}.
-    """
+def run_part(df_h,
+             half_idx,
+             ohlcv_np,
+             max_iterations):
     checkpoint_file = CHECKPOINT_FILE.replace(".pkl", f"_h{half_idx}.pkl")
     output_file = os.path.join(
         RESULTS_DIR,
-        f"macd_pop{POP_SIZE}_iters{max_iterations}_mode{SEARCH_MODE}_h{half_idx}.csv"
+        f"adx_pop{POP_SIZE}_iters{max_iterations}_mode{SEARCH_MODE}_h{half_idx}.csv"
     )
 
     os.makedirs(RESULTS_DIR, exist_ok=True)
@@ -140,28 +127,24 @@ def run_half(df_h: pd.DataFrame,
                            verbose=True)
 
             best_params = res.X
-            macd, macd_signal = custom_MACD(
+            adx, plus_DI, minus_DI = custom_ADX(
                 ohlcv_np,
-                fast_source=best_params["fast_source"],
-                slow_source=best_params["slow_source"],
-                fast_ma_type=best_params["fast_ma_type"],
-                fast_period=best_params["fast_period"],
-                slow_ma_type=best_params["slow_ma_type"],
-                slow_period=best_params["slow_period"],
-                signal_ma_type=best_params["signal_ma_type"],
-                signal_period=best_params["signal_period"],
+                atr_period=best_params["atr_period"],
+                posDM_period=best_params["posDM_period"],
+                negDM_period=best_params["negDM_period"],
+                adx_period=best_params["adx_period"],
+                ma_type_atr=best_params["ma_type_atr"],
+                ma_type_posDM=best_params["ma_type_posDM"],
+                ma_type_negDM=best_params["ma_type_negDM"],
+                ma_type_adx=best_params["ma_type_adx"],
             )
 
             signal_func_mapping = {
-                "lines_cross_with_zero": MACD_lines_cross_with_zero,
-                "lines_cross": MACD_lines_cross,
-                "lines_approaching_cross_with_zero": MACD_lines_approaching_cross_with_zero,
-                "lines_approaching_cross": MACD_lines_approaching_cross,
-                "signal_line_zero_cross": MACD_signal_line_zero_cross,
-                "MACD_line_zero_cross": MACD_line_zero_cross,
-                "histogram_reversal": MACD_histogram_reversal,
+                "ADX_trend_signal": ADX_trend_signal,
+                "ADX_DIs_cross_above_threshold": ADX_DIs_cross_above_threshold,
+                "ADX_DIs_approaching_cross_above_threshold": ADX_DIs_approaching_cross_above_threshold,
             }
-            signals = np.array(signal_func_mapping[best_params["signal_type"]](macd, macd_signal))
+            signals = np.array(signal_func_mapping[best_params["signal_type"]](adx, plus_DI, minus_DI, best_params["adx_threshold"]))
             gen_segments = extract_segments_indices(signals)
             gen_segments_set = {tuple(seg) for seg in gen_segments}
 
@@ -190,40 +173,36 @@ def run_half(df_h: pd.DataFrame,
     print(f"[h{half_idx}] finished – results saved to {output_file}")
 
 
-def main(max_iterations: int = MAX_ITERATIONS):
-    # 1. Load dataframe once
+def main(n_splits=2, max_iterations=MAX_ITERATIONS):
     df = pd.read_csv(ACTIONS_FULLPATH)
     ohlcv_np = df.to_numpy()[:, 1:6].astype(float)
+    print(f'All segments {int((df["Action"] != 0).sum())//2}')
 
-    # 2. Median split
-    median_val = df["Weight"].median()
-    print(f"Median Weight: {median_val}")
+    if n_splits == 0:
+        print("n_splits=0 -> using the full dataframe (no zeroing).")
+        run_part(df.copy(), half_idx=0, ohlcv_np=ohlcv_np, max_iterations=max_iterations)
+        return
 
-    # 3. Process two halves
-    for h_idx in (0, 1):
-        df_h = build_half_df(df, h_idx, median_val)
-        active_rows = (df_h["Action"] != 0).sum()
-        print(f"\n=== Half {h_idx} – active rows: {active_rows} ===")
-        run_half(df_h,
-                 half_idx=h_idx,
-                 ohlcv_np=ohlcv_np,
-                 max_iterations=max_iterations)  # stały limit
+    assignments = _equal_freq_assignments(df["Weight"], n_splits)
 
+    sizes = [int((assignments == i).sum()) for i in range(n_splits)]
+    n_inactive = int((assignments == -1).sum())
+    print(f"Created {n_splits} bins. Sizes (active only): {sizes} | inactive (Weight==0): {n_inactive}")
 
-def profile_main():
-    profiler = cProfile.Profile()
-    profiler.enable()
-    main(MAX_ITERATIONS)
-    profiler.disable()
-    s = io.StringIO()
-    stats = pstats.Stats(profiler, stream=s).sort_stats("tottime")
-    stats.print_stats()
-    print(s.getvalue())
+    for b_idx in range(n_splits):
+        df_b = build_bin_df(df, b_idx, assignments)
+        # df_b.to_csv(f'{b_idx}.csv', index=False)
+        buys = int((df_b["Action"] == 1).sum())
+        sells = int((df_b["Action"] == -1).sum())
+        print(f"\n=== Bin {b_idx} – buys: {buys} sells: {sells} ===")
+        w = df_b.loc[df_b["Weight"] != 1.0, "Weight"]
+        print(f"=== Weight mean: {w.mean()} max: {w.max()} min: {w.min()} ===")
+        run_part(df_b, half_idx=b_idx, ohlcv_np=ohlcv_np, max_iterations=max_iterations)
 
 
 if __name__ == "__main__":
     start_time = time.time()  # start timing
-    main(MAX_ITERATIONS)
+    main(n_splits=N_SPLITS, max_iterations=MAX_ITERATIONS)
     end_time = time.time()  # end timing
     print(f"Total execution time: {end_time - start_time:.2f} seconds")
     # profile_main()

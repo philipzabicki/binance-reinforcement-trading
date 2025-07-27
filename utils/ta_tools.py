@@ -4,7 +4,7 @@ from math import copysign
 from statistics import mean, stdev
 from time import time
 
-import Levenshtein
+# import Levenshtein
 import numpy as np
 import pandas as pd
 import pandas_ta as p_ta
@@ -138,38 +138,38 @@ def extract_segments_indices(signal):
     return segments_out[:seg_count]
 
 
-def profit_weighted_sequence_score_lib_old(optimal_signals, generated_signals, weights, buy=1, sell=-1, inactivity=0):
-    total_weight = 0.0
-    sequence_score_sum = 0.0
-    n = len(optimal_signals)
-    i = 0
-    while i < n:
-        if optimal_signals[i] == buy:
-            seq_start = i
-            seq_end = None
-            for j in range(i + 1, n):
-                if optimal_signals[j] == sell:
-                    seq_end = j
-                    break
-            if seq_end is None:
-                seq_end = n - 1
-            optimal_seq = ''.join(str(x) for x in optimal_signals[seq_start:seq_end + 1])
-            generated_seq = ''.join(str(x) for x in generated_signals[seq_start:seq_end + 1])
-
-            ed = Levenshtein.distance(optimal_seq, generated_seq)
-            norm_ed = ed / (seq_end - seq_start + 1)
-            seq_weight = np.sum(weights[seq_start:seq_end + 1])
-            sequence_score_sum += seq_weight * (1.0 - norm_ed)
-            total_weight += seq_weight
-            i = seq_end + 1
-        else:
-            if optimal_signals[i] == inactivity:
-                seq_weight = weights[i]
-                score = 1.0 if generated_signals[i] == inactivity else 0.0
-                sequence_score_sum += seq_weight * score
-                total_weight += seq_weight
-            i += 1
-    return sequence_score_sum / total_weight if total_weight > 0 else 0.0
+# def profit_weighted_sequence_score_lib_old(optimal_signals, generated_signals, weights, buy=1, sell=-1, inactivity=0):
+#     total_weight = 0.0
+#     sequence_score_sum = 0.0
+#     n = len(optimal_signals)
+#     i = 0
+#     while i < n:
+#         if optimal_signals[i] == buy:
+#             seq_start = i
+#             seq_end = None
+#             for j in range(i + 1, n):
+#                 if optimal_signals[j] == sell:
+#                     seq_end = j
+#                     break
+#             if seq_end is None:
+#                 seq_end = n - 1
+#             optimal_seq = ''.join(str(x) for x in optimal_signals[seq_start:seq_end + 1])
+#             generated_seq = ''.join(str(x) for x in generated_signals[seq_start:seq_end + 1])
+#
+#             ed = Levenshtein.distance(optimal_seq, generated_seq)
+#             norm_ed = ed / (seq_end - seq_start + 1)
+#             seq_weight = np.sum(weights[seq_start:seq_end + 1])
+#             sequence_score_sum += seq_weight * (1.0 - norm_ed)
+#             total_weight += seq_weight
+#             i = seq_end + 1
+#         else:
+#             if optimal_signals[i] == inactivity:
+#                 seq_weight = weights[i]
+#                 score = 1.0 if generated_signals[i] == inactivity else 0.0
+#                 sequence_score_sum += seq_weight * score
+#                 total_weight += seq_weight
+#             i += 1
+#     return sequence_score_sum / total_weight if total_weight > 0 else 0.0
 
 
 def weighted_levenshtein_match_combo_score(optimal_signals, generated_signals, optimal_signals_segments,
@@ -707,9 +707,56 @@ def kd_cross_outside(
     ]
 
 
+# TODO: Split/add threshold for buy/sell signal
 # @feature_timeit
 @jit(nopython=True, nogil=True, cache=True)
-def ADX_signal(
+def ADX_trend_signal(
+        adx_col, minus_di, plus_di, adx_threshold
+):
+    return [1 if (adx >= adx_threshold) and (pDI > mDI)
+            else
+            -1 if (adx >= adx_threshold) and (pDI < mDI)
+            else 0
+            for adx, mDI, pDI in zip(adx_col, minus_di, plus_di)]
+
+
+# TODO: Split/add threshold for buy/sell signal
+# @feature_timeit
+@jit(nopython=True, nogil=True, cache=True)
+def ADX_DIs_cross_above_threshold(
+        adx_col, minus_di, plus_di, adx_threshold
+):
+    return [0.0] + [
+            0 if adx < adx_threshold else
+            1 if (cur_pDI > cur_mDI) and (prev_pDI < prev_mDI) else
+            -1 if (cur_pDI < cur_mDI) and (prev_pDI > prev_mDI) else
+            0
+            for cur_pDI, cur_mDI, adx, prev_pDI, prev_mDI in zip(
+                plus_di[1:], minus_di[1:], adx_col[1:], plus_di[:-1], minus_di[:-1]
+            )
+    ]
+
+
+# TODO: Split/add threshold for buy/sell signal
+# @feature_timeit
+@jit(nopython=True, nogil=True, cache=True)
+def ADX_DIs_approaching_cross_above_threshold(
+        adx_col, minus_di, plus_di, adx_threshold
+):
+    return [0.0] + [
+            0 if adx < adx_threshold else
+            1 if (cur_pDI > prev_pDI) and (cur_mDI < prev_mDI) and (cur_pDI < cur_mDI) else
+            -1 if (cur_pDI < prev_pDI) and (cur_mDI > prev_mDI) and (cur_pDI > cur_mDI) else
+            0
+            for cur_pDI, cur_mDI, adx, prev_pDI, prev_mDI in zip(
+                plus_di[1:], minus_di[1:], adx_col[1:], plus_di[:-1], minus_di[:-1]
+            )
+    ]
+
+
+# @feature_timeit
+@jit(nopython=True, nogil=True, cache=True)
+def ADX_signal_old(
         adx_col: list | np.ndarray, minus_di: list | np.ndarray, plus_di: list | np.ndarray
 ) -> list[float]:
     """
@@ -728,6 +775,7 @@ def ADX_signal(
         0.75 same but adx only above 25.0
         -1.0 bearish DI cross and adx above 25.0
         -0.75 same but adx only above 25.0
+
         0.5 DIs are getting closer to bullish cross
         -0.5 DIs are getting closer to bearish cross
         0.25 getting closer to bullish cross but with adx only above 25.0:
@@ -807,17 +855,10 @@ def ADX_signal(
 
 # @feature_timeit
 @jit(nopython=True, nogil=True, cache=True)
-def ADX_trend_signal(
-        adx_col: list | np.ndarray, minus_di: list | np.ndarray, plus_di: list | np.ndarray
-) -> list[float | int]:
+def ADX_trend_signal_old(
+        adx_col, minus_di, plus_di, adx_threshold
+):
     """
-    Calculates the ADX trend macd_env.py based on the given ADX, minus DI, and plus DI values.
-
-    Args:
-        adx_col (np.ndarray or List[float]): An array or list of ADX values.
-        minus_di (np.ndarray or List[float]): An array or list of minus DI values.
-        plus_di (np.ndarray or List[float]): An array or list of plus DI values.
-
     Returns:
         List[float]: A list of trend signals. Possible values:
             1: Strong uptrend (ADX >= 75.0 and plus DI > minus DI)
@@ -829,11 +870,6 @@ def ADX_trend_signal(
             0.25: Very weak uptrend (ADX < 25.0 and plus DI > minus DI)
             -0.25: Very weak downtrend (ADX < 25.0 and plus DI < minus DI)
             0: No clear trend.
-
-    Note:
-        The function calculates the trend macd_env.py for each set of corresponding ADX, minus DI, and plus DI values
-        in the input arrays or lists.
-
     Example:
         >>> ADX = [70.0, 80.0, 60.0]
         >>> minusDI = [20.0, 30.0, 40.0]

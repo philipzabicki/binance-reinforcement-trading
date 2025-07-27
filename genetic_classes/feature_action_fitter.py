@@ -12,6 +12,88 @@ from utils.feature_generation import *
 from utils.ta_tools import *
 
 
+class ADXFitting(ElementwiseProblem):
+    def __init__(self, df, target_segments=None, min_match_factor=0.01, mode='match', *args, **kwargs):
+        self.mode = mode
+        self.target_segments = target_segments if target_segments is not None else extract_segments_indices(
+            df['Action'].values)
+        # self.recall, self.precision, self.distances = [], [], []
+        self.target_segments_count = self.target_segments.shape[0]
+        self.actions = df['Action'].values
+        self.weights = df['Weight'].values
+        self.min_match_factor = min_match_factor
+        self.ohlcv = df[['Open', 'High', 'Low', 'Close', 'Volume']].to_numpy().astype(float)
+        adx_variables = {
+            "signal_type": Choice(
+                options=[
+                    "ADX_trend_signal",
+                    "ADX_DIs_cross_above_threshold",
+                    "ADX_DIs_approaching_cross_above_threshold"
+                ]
+            ),
+            "atr_period": Integer(bounds=(2, 1000)),
+            "posDM_period": Integer(bounds=(2, 250)),
+            "negDM_period": Integer(bounds=(2, 250)),
+            "adx_period": Integer(bounds=(2, 250)),
+            "ma_type_atr": Integer(bounds=(0, 25)),
+            "ma_type_posDM": Integer(bounds=(0, 25)),
+            "ma_type_negDM": Integer(bounds=(0, 25)),
+            "ma_type_adx": Integer(bounds=(0, 25)),
+            "adx_threshold": Real(bounds=(0, 100))
+        }
+        self.signal_func_mapping = {
+            "ADX_trend_signal": ADX_trend_signal,
+            "ADX_DIs_cross_above_threshold": ADX_DIs_cross_above_threshold,
+            "ADX_DIs_approaching_cross_above_threshold": ADX_DIs_approaching_cross_above_threshold,
+        }
+        super().__init__(*args, vars=adx_variables, n_obj=1, **kwargs)
+
+    def _evaluate(self, X, out, *args, **kwargs):
+        # print(f'X {X}')
+        adx, plus_DI, minus_DI = custom_ADX(
+            self.ohlcv,
+            atr_period=X["atr_period"],
+            posDM_period=X["posDM_period"],
+            negDM_period=X["negDM_period"],
+            adx_period=X["adx_period"],
+            ma_type_atr=X["ma_type_atr"],
+            ma_type_posDM=X["ma_type_posDM"],
+            ma_type_negDM=X["ma_type_negDM"],
+            ma_type_adx=X["ma_type_adx"],
+        )
+        try:
+            # Use mapping to select the function based on signals_source
+            func = self.signal_func_mapping[X["signal_type"]]
+        except KeyError:
+            raise ValueError("Unknown signals source, available {ADX_trend_signal, ADX_DIs_cross_above_threshold"
+                             "ADX_DIs_approaching_cross_above_threshold}")
+
+        signals = array(func(adx, plus_DI, minus_DI, X["adx_threshold"]))
+        if self.mode in ['match', 'mix']:
+            extracted_signals = extract_segments_indices(signals)
+            extracted_signals_set = {tuple(seg) for seg in extracted_signals}
+            match_count = sum(
+                1 for seg in self.target_segments if tuple(seg) in extracted_signals_set
+            )
+            nonzero_signals = np.count_nonzero(signals)
+
+            epsilon = 1e-8
+            threshold = self.min_match_factor * self.target_segments_count
+
+            if match_count < threshold:
+                missing_ratio = (threshold - match_count) / threshold
+                penalty = missing_ratio * self.target_segments_count
+                out["F"] = penalty
+            else:
+                ratios = ((match_count / self.target_segments_count) + (match_count / (nonzero_signals + epsilon))) / 2
+                if self.mode == 'mix':
+                    rev_dist = 1 / distance.euclidean(self.actions, signals, w=self.weights)
+                    out["F"] = -1 * (ratios + rev_dist)
+                else:
+                    out["F"] = -ratios
+        elif self.mode == 'distance':
+            out["F"] = distance.euclidean(self.actions, signals, w=self.weights)
+
 class KeltnerChannelFitting(ElementwiseProblem):
     def __init__(self, df, target_segments=None, min_match_factor=0.01, mode='match', *args, **kwargs):
         self.mode = mode
@@ -542,7 +624,7 @@ class StochasticOscillatorFitting_v1(ElementwiseProblem):
         )
 
 
-class ADXFitting(ElementwiseProblem):
+class ADXFitting_v1(ElementwiseProblem):
     def __init__(self, df, lower, upper, *args, signals_source="cross", **kwargs):
         self.signals_source = signals_source
         self.actions = df["Action"].values

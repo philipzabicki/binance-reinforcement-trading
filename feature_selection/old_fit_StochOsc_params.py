@@ -24,7 +24,7 @@ from pymoo.core.problem import StarmapParallelization
 from pymoo.optimize import minimize
 from pymoo.termination.default import DefaultMultiObjectiveTermination
 
-from common import save_checkpoint, load_checkpoint, build_half_df
+from common import save_checkpoint, load_checkpoint
 from definitions import REPORT_DIR
 from genetic_classes.feature_action_fitter import StochasticOscillatorFitting
 from utils.feature_generation import ohlcv_initializer, custom_StochasticOscillator
@@ -66,8 +66,8 @@ MATING = MixedVariableMating(
 
 CPU_CORES_COUNT = 17
 print(f"CPUs used: {CPU_CORES_COUNT}")
-POP_SIZE = 6144
-MAX_ITERATIONS = 15
+POP_SIZE = 2048
+MAX_ITERATIONS = 25
 SEARCH_MODE = 'mix'
 
 RESULTS_DIR = os.path.join(REPORT_DIR, "feature_fits_quick")
@@ -82,49 +82,34 @@ def pool_initializer(ohlcv_np):
     ohlcv_initializer(ohlcv_np)
 
 
-def run_half(df_h: pd.DataFrame,
-             half_idx: int,
-             ohlcv_np: np.ndarray,
-             max_iterations: int = 15):
-    """
-    GA fitting pass for Stochastic Oscillator on the selected half
-    of the data (0 = ≤ median, 1 = > median).
-    """
-    checkpoint_file = CHECKPOINT_FILE.replace(".pkl", f"_h{half_idx}.pkl")
-    output_file = os.path.join(
-        RESULTS_DIR,
-        f"stoch_osc_pop{POP_SIZE}_iters{max_iterations}_mode{SEARCH_MODE}_h{half_idx}.csv"
-    )
+def main(max_iterations=10):
+    df = pd.read_csv(ACTIONS_FULLPATH)
+    ohlcv_np = df.to_numpy()[:, 1:6].astype(float)
+    print(f"Loaded from file actions df: {df.head()}")
 
     os.makedirs(RESULTS_DIR, exist_ok=True)
-    checkpoint = load_checkpoint(checkpoint_file)
+    checkpoint = load_checkpoint(CHECKPOINT_FILE)
     if checkpoint:
         iteration = checkpoint["iteration"]
         unmatched_segments = checkpoint["unmatched_segments"]
         all_results = checkpoint["all_results"]
-        print(f"[h{half_idx}] Resuming at iter {iteration} with {len(unmatched_segments)} segments left")
+        print(
+            f"Resuming from iteration {iteration} with {len(unmatched_segments)} unmatched segments"
+        )
     else:
         iteration = 0
-        unmatched_segments = extract_segments_indices(df_h["Action"].values)
+        unmatched_segments = extract_segments_indices(df["Action"].values)
         all_results = []
-        print(f"[h{half_idx}] Starting – initial segments: {len(unmatched_segments)}")
+        print(f"Initial unmatched segments: {len(unmatched_segments)}")
 
-    if unmatched_segments.shape[0] == 0:
-        print(f"[h{half_idx}] No actionable segments – skip.")
-        return
-
-    with Pool(CPU_CORES_COUNT,
-              initializer=pool_initializer,
-              initargs=(ohlcv_np,)) as pool:
+    with Pool(CPU_CORES_COUNT, initializer=pool_initializer, initargs=(ohlcv_np,)) as pool:
         runner = StarmapParallelization(pool.starmap)
-
         while unmatched_segments.shape[0]:
-            print(f"[h{half_idx}] iter {iteration}, segments: {len(unmatched_segments)}")
+            print(
+                f"Iteration {iteration}, unmatched segments: {len(unmatched_segments)}"
+            )
 
-            problem = PROBLEM(df=df_h,
-                              target_segments=unmatched_segments,
-                              mode=SEARCH_MODE,
-                              elementwise_runner=runner)
+            problem = PROBLEM(df=df, target_segments=unmatched_segments, mode=SEARCH_MODE, elementwise_runner=runner)
 
             algorithm = ALGORITHM(
                 pop_size=POP_SIZE,
@@ -142,8 +127,8 @@ def run_half(df_h: pd.DataFrame,
                 termination=TERMINATION,
                 verbose=True,
             )
-
             best_params = res.X
+
             slowK, slowD = custom_StochasticOscillator(
                 ohlcv_np,
                 fastK_period=best_params["fastK_period"],
@@ -177,51 +162,46 @@ def run_half(df_h: pd.DataFrame,
                 )
             )
             gen_segments = extract_segments_indices(signals)
-            gen_segments_set = {tuple(seg) for seg in gen_segments}
 
-            matched = sum(1 for seg in unmatched_segments if tuple(seg) in gen_segments_set)
+            gen_segments_set = {tuple(seg) for seg in gen_segments}
+            # matched = [seg for seg in unmatched_segments if tuple(seg) in gen_segments_set]
+            matched = sum(
+                1 for seg in unmatched_segments if tuple(seg) in gen_segments_set
+            )
             if matched:
+                print(f"Matched segments in iteration {iteration}: {matched}")
+                print(f"Best params: {best_params}")
                 unmatched_segments = np.array(
-                    [seg for seg in unmatched_segments if tuple(seg) not in gen_segments_set]
+                    [
+                        seg
+                        for seg in unmatched_segments
+                        if tuple(seg) not in gen_segments_set
+                    ]
                 )
                 all_results.append(
                     {"iteration": iteration, "params": best_params, "matched": matched}
                 )
-                print(f"[h{half_idx}] matched: {matched}")
             else:
-                print(f"[h{half_idx}] no match, extend budget by 1")
+                print(
+                    f"No matched segments in iteration {iteration}: 0, Increased max iterations by 1"
+                )
                 max_iterations += 1
 
-            save_checkpoint(checkpoint_file, iteration + 1, unmatched_segments, all_results)
+            save_checkpoint(
+                CHECKPOINT_FILE, iteration + 1, unmatched_segments, all_results
+            )
             iteration += 1
             if iteration >= max_iterations:
-                print(f"[h{half_idx}] reached {max_iterations} iterations.")
+                print("Max iterations reached.")
                 break
 
-    pd.DataFrame(all_results).to_csv(output_file, index=False)
-    if os.path.exists(checkpoint_file):
-        os.remove(checkpoint_file)
-    print(f"[h{half_idx}] finished – results saved to {output_file}")
-
-
-def main(max_iterations: int = MAX_ITERATIONS):
-    # 1. Load dataframe once
-    df = pd.read_csv(ACTIONS_FULLPATH)
-    ohlcv_np = df.to_numpy()[:, 1:6].astype(float)
-
-    # 2. Median split
-    median_val = df["Weight"].median()
-    print(f"Median Weight: {median_val}")
-
-    # 3. Process halves
-    for h_idx in (0, 1):
-        df_h = build_half_df(df, h_idx, median_val)
-        active_rows = (df_h["Action"] != 0).sum()
-        print(f"\n=== Half {h_idx} – active rows: {active_rows} ===")
-        run_half(df_h,
-                 half_idx=h_idx,
-                 ohlcv_np=ohlcv_np,
-                 max_iterations=max_iterations)  # stały limit
+        output_file = os.path.join(
+            RESULTS_DIR, f"stoch_osc_pop{POP_SIZE}_iters{MAX_ITERATIONS}_mode{SEARCH_MODE}.csv"
+        )
+        pd.DataFrame(all_results).to_csv(output_file, index=False)
+        print("All results saved.")
+        if os.path.exists(CHECKPOINT_FILE):
+            os.remove(CHECKPOINT_FILE)
 
 
 def profile_main():

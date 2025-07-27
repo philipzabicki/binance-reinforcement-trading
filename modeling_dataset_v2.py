@@ -2,6 +2,7 @@ import ast
 from datetime import time
 from os import path
 
+import re
 import numpy as np
 import pandas as pd
 from talib import AD, TRANGE
@@ -56,7 +57,22 @@ PARAM_DIR = r"reports\feature_fits_quick"
 CHAIKIN_PARAMS_FILE = 'chaikin_osc_pop8192_iters15_modemix_h01.csv'
 KELTNER_PARAMS_FILE = 'keltner_channel_pop8192_iters15_modemix_h01.csv'
 MACD_PARAMS_FILE = 'macd_pop8192_iters15_modemix_h01.csv'
-STOCH_PARAMS_FILE = 'stoch_osc_pop6144_iters15_modemix_h01.csv'
+STOCH_PARAMS_FILE = 'stoch_osc_pop8192_iters15_modemix_h01.csv'
+
+_NP_WRAP = re.compile(r"np\.\w+\((.*?)\)")
+
+def literal_eval_np(x):
+    """Zdejmuje np.int64(...), np.float64(...), np.str_(...) itd. i odpala ast.literal_eval."""
+    if not isinstance(x, str):
+        return x
+    s = x
+    # usuwamy wszystkie wrappery np.*(...) aż nic nie zostanie
+    while 'np.' in s:
+        s_new, n = _NP_WRAP.subn(r"\1", s)
+        if n == 0:
+            break
+        s = s_new
+    return ast.literal_eval(s)
 
 sessions = {
     # Ameryka Północna
@@ -110,7 +126,8 @@ if __name__ == "__main__":
 
     ### Chaikin Oscillator
     chaikin_results = pd.read_csv(path.join(PARAM_DIR, CHAIKIN_PARAMS_FILE))
-    chaikin_results['params'] = chaikin_results['params'].apply(ast.literal_eval)
+    chaikin_results['params'] = chaikin_results['params'].apply(literal_eval_np)
+    # chaikin_results['params'] = chaikin_results['params'].apply(ast.literal_eval)
 
     for idx, row in chaikin_results.iterrows():
         print(f'Chaikin Oscillator idx {idx} matched {row["matched"]}')
@@ -133,7 +150,8 @@ if __name__ == "__main__":
 
     ### Keltner channel
     keltner_results = pd.read_csv(path.join(PARAM_DIR, KELTNER_PARAMS_FILE))
-    keltner_results['params'] = keltner_results['params'].apply(ast.literal_eval)
+    keltner_results['params'] = keltner_results['params'].apply(literal_eval_np)
+    # keltner_results['params'] = keltner_results['params'].apply(ast.literal_eval)
 
     for idx, row in keltner_results.iterrows():
         print(f'Keltner channel idx {idx} matched {row["matched"]}')
@@ -161,7 +179,8 @@ if __name__ == "__main__":
 
     ### MACD
     macd_results = pd.read_csv(path.join(PARAM_DIR, MACD_PARAMS_FILE))
-    macd_results['params'] = macd_results['params'].apply(ast.literal_eval)
+    macd_results['params'] = macd_results['params'].apply(literal_eval_np)
+    # macd_results['params'] = macd_results['params'].apply(ast.literal_eval)
 
     for idx, row in macd_results.iterrows():
         print(f'MACD idx {idx} matched {row["matched"]}')
@@ -201,7 +220,8 @@ if __name__ == "__main__":
 
     ### Stochastic Oscillator
     stoch_results = pd.read_csv(path.join(PARAM_DIR, STOCH_PARAMS_FILE))
-    stoch_results['params'] = stoch_results['params'].apply(ast.literal_eval)
+    stoch_results['params'] = stoch_results['params'].apply(literal_eval_np)
+    # stoch_results['params'] = stoch_results['params'].apply(ast.literal_eval)
 
     for idx, row in stoch_results.iterrows():
         print(f'Stochastic Oscillator idx {idx} matched {row["matched"]}')

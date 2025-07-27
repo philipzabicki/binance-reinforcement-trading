@@ -5,6 +5,7 @@ reports/envs/*
 !reports/.gitkeep
 **/__pycache__
 *.png
+*.pkl
 *.old
 *.old*
 credentials.py
