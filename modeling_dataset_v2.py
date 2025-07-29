@@ -1,8 +1,8 @@
 import ast
+import re
 from datetime import time
 from os import path
 
-import re
 import numpy as np
 import pandas as pd
 from talib import AD, TRANGE
@@ -61,6 +61,7 @@ STOCH_PARAMS_FILE = 'stoch_osc_pop8192_iters15_modemix_h01.csv'
 
 _NP_WRAP = re.compile(r"np\.\w+\((.*?)\)")
 
+
 def literal_eval_np(x):
     """Zdejmuje np.int64(...), np.float64(...), np.str_(...) itd. i odpala ast.literal_eval."""
     if not isinstance(x, str):
@@ -73,6 +74,7 @@ def literal_eval_np(x):
             break
         s = s_new
     return ast.literal_eval(s)
+
 
 sessions = {
     # Ameryka Północna

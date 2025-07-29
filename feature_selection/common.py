@@ -1,8 +1,8 @@
 import os
 import pickle
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 
 
 def save_checkpoint(file_fullpath, iteration, unmatched_segments, all_results):
@@ -38,12 +38,14 @@ def build_half_df(df: pd.DataFrame, half_idx: int, median_val: float) -> pd.Data
     hdf.loc[~mask, "Action"] = 0
     return hdf
 
+
 def build_bin_df(df, bin_idx, assignments):
     hdf = df.copy()
     mask = (assignments == bin_idx)
     hdf.loc[~mask, "Action"] = 0
     hdf.loc[~mask, "Weight"] = 1.0
     return hdf
+
 
 def _equal_freq_assignments(weight_s, n_splits):
     if n_splits < 0:

@@ -8,16 +8,16 @@ from multiprocessing import Pool
 import numpy as np
 import pandas as pd
 from pymoo.core.mixed import MixedVariableGA
-from pymoo.operators.mutation.pm import PolynomialMutation as PM
-from pymoo.operators.crossover.sbx import SBX
-from pymoo.operators.repair.rounding import RoundingRepair
-from pymoo.core.variable import Real, Integer
 from pymoo.core.mixed import (
     MixedVariableMating,
     MixedVariableSampling,
     MixedVariableDuplicateElimination,
 )
 from pymoo.core.problem import StarmapParallelization
+from pymoo.core.variable import Real, Integer
+from pymoo.operators.crossover.sbx import SBX
+from pymoo.operators.mutation.pm import PolynomialMutation as PM
+from pymoo.operators.repair.rounding import RoundingRepair
 from pymoo.optimize import minimize
 from pymoo.termination.default import DefaultMultiObjectiveTermination
 from talib import TRANGE
@@ -31,13 +31,12 @@ from utils.feature_generation import (
 )
 from utils.ta_tools import extract_segments_indices
 
-
 PROBLEM = KeltnerChannelFitting
 ALGORITHM = MixedVariableGA
 TERMINATION = DefaultMultiObjectiveTermination(
     # cvtol=1e-8, # default 1e-8
-    xtol=0.00005, # default 0.0005
-    ftol=0.00001, # default 0.005
+    xtol=0.00005,  # default 0.0005
+    ftol=0.00001,  # default 0.005
     period=7,
     n_max_gen=100,
     n_max_evals=1_000_000

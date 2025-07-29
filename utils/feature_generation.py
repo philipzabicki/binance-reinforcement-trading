@@ -22,12 +22,12 @@ DOWN_MOVE_BYTES = None
 DOWN_MOVE_SHAPE = None
 
 
-def keltner_channel_initializer(ohlcv: np.ndarray):
+def keltner_channel_initializer(ohlcvvwap: np.ndarray):
     # print(f"keltner_channel_initializer ohlcv: {ohlcv}")
-    ohlcv_initializer(ohlcv)
+    ohlcvvwap_initializer(ohlcvvwap)
     global TRANGE_BYTES, TRANGE_SHAPE
     # Precompute the bytes representation and shape of the constant array.
-    true_range = talib.TRANGE(*ohlcv[:, 1:4].T)
+    true_range = talib.TRANGE(*ohlcvvwap[:, 1:4].T)
     TRANGE_BYTES = true_range.tobytes()
     TRANGE_SHAPE = true_range.shape
 
@@ -56,7 +56,6 @@ def adx_initializer(ohlcv: np.ndarray):
     DOWN_MOVE_SHAPE = down_move.shape
 
 
-
 def adl_initializer(ohlcv: np.ndarray):
     global ADL_BYTES, ADL_SHAPE
     adl = talib.AD(*ohlcv[:, 1:5].T)
@@ -69,6 +68,10 @@ def ohlcv_initializer(ohlcv: np.ndarray):
     OHLCV_BYTES = ohlcv.tobytes()
     OHLCV_SHAPE = ohlcv.shape
 
+def ohlcvvwap_initializer(ohlcvvwap: np.ndarray):
+    global OHLCV_BYTES, OHLCV_SHAPE
+    OHLCV_BYTES = ohlcvvwap.tobytes()
+    OHLCV_SHAPE = ohlcvvwap.shape
 
 @lru_cache(maxsize=2048)
 def get_ma_from_source_cache(ma_type: int, ma_period: int, source: str) -> np.ndarray:

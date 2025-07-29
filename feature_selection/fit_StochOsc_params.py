@@ -1,8 +1,8 @@
 # import cProfile
 # import io
 # import pstats
-import time
 import os
+import time
 # import numpy as np
 from multiprocessing import Pool
 
@@ -10,10 +10,6 @@ import numpy as np
 import pandas as pd
 # from pymoo.algorithms.soo.nonconvex.ga import GA
 from pymoo.core.mixed import MixedVariableGA
-from pymoo.operators.mutation.pm import PolynomialMutation as PM
-from pymoo.operators.crossover.sbx import SBX
-from pymoo.operators.repair.rounding import RoundingRepair
-from pymoo.core.variable import Real, Integer
 # import matplotlib.pyplot as plt
 from pymoo.core.mixed import (
     MixedVariableMating,
@@ -21,6 +17,10 @@ from pymoo.core.mixed import (
     MixedVariableDuplicateElimination,
 )
 from pymoo.core.problem import StarmapParallelization
+from pymoo.core.variable import Real, Integer
+from pymoo.operators.crossover.sbx import SBX
+from pymoo.operators.mutation.pm import PolynomialMutation as PM
+from pymoo.operators.repair.rounding import RoundingRepair
 from pymoo.optimize import minimize
 from pymoo.termination.default import DefaultMultiObjectiveTermination
 
@@ -44,13 +44,12 @@ from utils.ta_tools import (
     kd_cross_outside,
 )
 
-
 PROBLEM = StochasticOscillatorFitting
 ALGORITHM = MixedVariableGA
 TERMINATION = DefaultMultiObjectiveTermination(
     # cvtol=1e-8, # default 1e-8
-    xtol=0.00005, # default 0.0005
-    ftol=0.00001, # default 0.005
+    xtol=0.00005,  # default 0.0005
+    ftol=0.00001,  # default 0.005
     period=7,
     n_max_gen=100,
     n_max_evals=1_000_000
@@ -145,6 +144,8 @@ def run_part(df_h: pd.DataFrame,
             )
 
             best_params = res.X
+            print(f'Best parameters found: {best_params}')
+
             slowK, slowD = custom_StochasticOscillator(
                 ohlcv_np,
                 fastK_period=best_params["fastK_period"],
@@ -208,7 +209,7 @@ def run_part(df_h: pd.DataFrame,
 def main(n_splits=2, max_iterations=MAX_ITERATIONS):
     df = pd.read_csv(ACTIONS_FULLPATH)
     ohlcv_np = df.to_numpy()[:, 1:6].astype(float)
-    print(f'All segments {int((df["Action"] != 0).sum())//2}')
+    print(f'All segments {int((df["Action"] != 0).sum()) // 2}')
 
     if n_splits == 0:
         print("n_splits=0 -> using the full dataframe (no zeroing).")

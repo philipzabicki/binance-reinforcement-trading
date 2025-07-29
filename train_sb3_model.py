@@ -12,7 +12,6 @@ import torch as th
 import torch.nn as nn
 import pandas as pd
 import numpy as np
-from gymnasium import Space
 from numpy import inf
 from stable_baselines3.common.logger import configure
 from tqdm import trange
@@ -21,7 +20,6 @@ from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from stable_baselines3.common.vec_env import SubprocVecEnv, VecMonitor
 from stable_baselines3.common.callbacks import BaseCallback
 from torch import cuda
-from torch.nn import functional as F
 
 from definitions import TENSORBOARD_DIR, MODELS_DIR, MODELING_DATASET_DIR
 from environments.rl_spot_env import DiscreteSpotTakerRL
@@ -63,7 +61,7 @@ class CustomCNNBiLSTMAttentionFeatureExtractor(BaseFeaturesExtractor):
             nn.Conv1d(in_channels=n_features, out_channels=1024, kernel_size=3, padding=1),
             nn.BatchNorm1d(1024),
             nn.ReLU(),
-            #nn.Dropout(p=0.5),
+            # nn.Dropout(p=0.5),
 
             nn.Conv1d(1024, 128, kernel_size=5, padding=2),  # z 256 na 128
             nn.ReLU(),
@@ -124,8 +122,10 @@ def seed_everything(seed):
 def make_env(df, env_number, **env_kwargs):
     env_kwargs['seed'] += env_number
     print(f'Env created with seed: {env_kwargs["seed"]}')
+
     def _init():
         return DiscreteSpotTakerRL(df=df, **env_kwargs)
+
     return _init
 
 
@@ -256,10 +256,10 @@ if __name__ == "__main__":
     print(f"\nTotal memory: {total_mem / (1024 ** 2):.2f} MB")
 
     for p in range(0, 11):
-        print(f'Testing p: {p/10}')
+        print(f'Testing p: {p / 10}')
         # TOTAL_ENV_STEPS = p*NUM_ENVS
         # MODEL_PARAMETERS["exploration_fraction"] = p
-        MODEL_PARAMETERS["gamma"] = p/10
+        MODEL_PARAMETERS["gamma"] = p / 10
 
         timestamp = dt.now().strftime("%Y%m%d_%H%M%S")
         parts = [_fmt(k, ENV_KWARGS[k]) for k in ENV_ORDER] + \

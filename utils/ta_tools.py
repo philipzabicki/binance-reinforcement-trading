@@ -727,13 +727,13 @@ def ADX_DIs_cross_above_threshold(
         adx_col, minus_di, plus_di, adx_threshold
 ):
     return [0.0] + [
-            0 if adx < adx_threshold else
-            1 if (cur_pDI > cur_mDI) and (prev_pDI < prev_mDI) else
-            -1 if (cur_pDI < cur_mDI) and (prev_pDI > prev_mDI) else
-            0
-            for cur_pDI, cur_mDI, adx, prev_pDI, prev_mDI in zip(
-                plus_di[1:], minus_di[1:], adx_col[1:], plus_di[:-1], minus_di[:-1]
-            )
+        0 if adx < adx_threshold else
+        1 if (cur_pDI > cur_mDI) and (prev_pDI < prev_mDI) else
+        -1 if (cur_pDI < cur_mDI) and (prev_pDI > prev_mDI) else
+        0
+        for cur_pDI, cur_mDI, adx, prev_pDI, prev_mDI in zip(
+            plus_di[1:], minus_di[1:], adx_col[1:], plus_di[:-1], minus_di[:-1]
+        )
     ]
 
 
@@ -744,13 +744,13 @@ def ADX_DIs_approaching_cross_above_threshold(
         adx_col, minus_di, plus_di, adx_threshold
 ):
     return [0.0] + [
-            0 if adx < adx_threshold else
-            1 if (cur_pDI > prev_pDI) and (cur_mDI < prev_mDI) and (cur_pDI < cur_mDI) else
-            -1 if (cur_pDI < prev_pDI) and (cur_mDI > prev_mDI) and (cur_pDI > cur_mDI) else
-            0
-            for cur_pDI, cur_mDI, adx, prev_pDI, prev_mDI in zip(
-                plus_di[1:], minus_di[1:], adx_col[1:], plus_di[:-1], minus_di[:-1]
-            )
+        0 if adx < adx_threshold else
+        1 if (cur_pDI > prev_pDI) and (cur_mDI < prev_mDI) and (cur_pDI < cur_mDI) else
+        -1 if (cur_pDI < prev_pDI) and (cur_mDI > prev_mDI) and (cur_pDI > cur_mDI) else
+        0
+        for cur_pDI, cur_mDI, adx, prev_pDI, prev_mDI in zip(
+            plus_di[1:], minus_di[1:], adx_col[1:], plus_di[:-1], minus_di[:-1]
+        )
     ]
 
 
@@ -1742,7 +1742,7 @@ def get_1D_MA(close: np.ndarray, ma_type: int, ma_period: int) -> np.ndarray:
 
 
 def get_ma_from_source(
-        np_df: np.ndarray, ma_type: int, ma_period: int, source: str
+        np_df: np.ndarray, ma_type: int, ma_period: int, source: str = "close"
 ) -> np.ndarray:
     column_map = {
         "open": np_df[:, 0],
@@ -1753,6 +1753,7 @@ def get_ma_from_source(
         "hlc3": (np_df[:, 1] + np_df[:, 2] + np_df[:, 3]) / 3,
         "ohlc4": (np_df[:, 0] + np_df[:, 1] + np_df[:, 2] + np_df[:, 3]) / 4,
         "hlcc4": (np_df[:, 1] + np_df[:, 2] + np_df[:, 3] + np_df[:, 3]) / 4,
+        "vwap": np_df[:, 5],
     }
     try:
         s = column_map[source]

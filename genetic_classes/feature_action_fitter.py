@@ -94,6 +94,7 @@ class ADXFitting(ElementwiseProblem):
         elif self.mode == 'distance':
             out["F"] = distance.euclidean(self.actions, signals, w=self.weights)
 
+
 class KeltnerChannelFitting(ElementwiseProblem):
     def __init__(self, df, target_segments=None, min_match_factor=0.01, mode='match', *args, **kwargs):
         self.mode = mode
@@ -121,6 +122,7 @@ class KeltnerChannelFitting(ElementwiseProblem):
                     "hlc3",
                     "ohlc4",
                     "hlcc4",
+                    "vwap"
                 ]
             ),
         }
@@ -204,6 +206,7 @@ class MACDFitting(ElementwiseProblem):
                     "hlc3",
                     "ohlc4",
                     "hlcc4",
+                    "vwap"
                 ]
             ),
             "slow_source": Choice(
@@ -216,6 +219,7 @@ class MACDFitting(ElementwiseProblem):
                     "hlc3",
                     "ohlc4",
                     "hlcc4",
+                    "vwap"
                 ]
             ),
             "fast_period": Integer(bounds=(2, 1000)),

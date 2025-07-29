@@ -3,14 +3,10 @@ import time
 # import numpy as np
 from multiprocessing import Pool
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 # from pymoo.algorithms.soo.nonconvex.ga import GA
 from pymoo.core.mixed import MixedVariableGA
-from pymoo.operators.mutation.pm import PolynomialMutation as PM
-from pymoo.operators.crossover.sbx import SBX
-from pymoo.operators.repair.rounding import RoundingRepair
-from pymoo.core.variable import Real, Integer
 # import matplotlib.pyplot as plt
 from pymoo.core.mixed import (
     MixedVariableMating,
@@ -18,6 +14,10 @@ from pymoo.core.mixed import (
     MixedVariableDuplicateElimination,
 )
 from pymoo.core.problem import StarmapParallelization
+from pymoo.core.variable import Real, Integer
+from pymoo.operators.crossover.sbx import SBX
+from pymoo.operators.mutation.pm import PolynomialMutation as PM
+from pymoo.operators.repair.rounding import RoundingRepair
 from pymoo.optimize import minimize
 from pymoo.termination.default import DefaultMultiObjectiveTermination
 
@@ -33,13 +33,12 @@ from utils.ta_tools import (extract_segments_indices,
                             ADX_DIs_cross_above_threshold,
                             ADX_DIs_approaching_cross_above_threshold)
 
-
 PROBLEM = ADXFitting
 ALGORITHM = MixedVariableGA
 TERMINATION = DefaultMultiObjectiveTermination(
     # cvtol=1e-8, # default 1e-8
-    xtol=0.00005, # default 0.0005
-    ftol=0.00001, # default 0.005
+    xtol=0.00005,  # default 0.0005
+    ftol=0.00001,  # default 0.005
     period=7,
     n_max_gen=100,
     n_max_evals=1_000_000
@@ -70,6 +69,7 @@ CHECKPOINT_FILE = os.path.join(RESULTS_DIR,
 
 def pool_initializer(ohlcv_np):
     adx_initializer(ohlcv_np)
+
 
 def run_part(df_h,
              half_idx,
@@ -127,6 +127,8 @@ def run_part(df_h,
                            verbose=True)
 
             best_params = res.X
+            print(f'Best parameters found: {best_params}')
+
             adx, plus_DI, minus_DI = custom_ADX(
                 ohlcv_np,
                 atr_period=best_params["atr_period"],
@@ -144,7 +146,8 @@ def run_part(df_h,
                 "ADX_DIs_cross_above_threshold": ADX_DIs_cross_above_threshold,
                 "ADX_DIs_approaching_cross_above_threshold": ADX_DIs_approaching_cross_above_threshold,
             }
-            signals = np.array(signal_func_mapping[best_params["signal_type"]](adx, plus_DI, minus_DI, best_params["adx_threshold"]))
+            signals = np.array(
+                signal_func_mapping[best_params["signal_type"]](adx, plus_DI, minus_DI, best_params["adx_threshold"]))
             gen_segments = extract_segments_indices(signals)
             gen_segments_set = {tuple(seg) for seg in gen_segments}
 
@@ -176,7 +179,7 @@ def run_part(df_h,
 def main(n_splits=2, max_iterations=MAX_ITERATIONS):
     df = pd.read_csv(ACTIONS_FULLPATH)
     ohlcv_np = df.to_numpy()[:, 1:6].astype(float)
-    print(f'All segments {int((df["Action"] != 0).sum())//2}')
+    print(f'All segments {int((df["Action"] != 0).sum()) // 2}')
 
     if n_splits == 0:
         print("n_splits=0 -> using the full dataframe (no zeroing).")

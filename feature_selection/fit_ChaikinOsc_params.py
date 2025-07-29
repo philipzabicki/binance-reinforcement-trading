@@ -1,7 +1,4 @@
-import cProfile
-import io
 import os
-import pstats
 import time
 # import numpy as np
 from multiprocessing import Pool
@@ -10,10 +7,6 @@ import numpy as np
 import pandas as pd
 # from pymoo.algorithms.soo.nonconvex.ga import GA
 from pymoo.core.mixed import MixedVariableGA
-from pymoo.operators.mutation.pm import PolynomialMutation as PM
-from pymoo.operators.crossover.sbx import SBX
-from pymoo.operators.repair.rounding import RoundingRepair
-from pymoo.core.variable import Real, Integer
 # import matplotlib.pyplot as plt
 from pymoo.core.mixed import (
     MixedVariableMating,
@@ -21,6 +14,10 @@ from pymoo.core.mixed import (
     MixedVariableDuplicateElimination,
 )
 from pymoo.core.problem import StarmapParallelization
+from pymoo.core.variable import Real, Integer
+from pymoo.operators.crossover.sbx import SBX
+from pymoo.operators.mutation.pm import PolynomialMutation as PM
+from pymoo.operators.repair.rounding import RoundingRepair
 from pymoo.optimize import minimize
 from pymoo.termination.default import DefaultMultiObjectiveTermination
 from talib import AD
@@ -36,8 +33,8 @@ PROBLEM = ChaikinOscillatorFitting
 ALGORITHM = MixedVariableGA
 TERMINATION = DefaultMultiObjectiveTermination(
     # cvtol=1e-8, # default 1e-8
-    xtol=0.00005, # default 0.0005
-    ftol=0.00001, # default 0.005
+    xtol=0.00005,  # default 0.0005
+    ftol=0.00001,  # default 0.005
     period=7,
     n_max_gen=100,
     n_max_evals=1_000_000
@@ -126,6 +123,8 @@ def run_part(df_h: pd.DataFrame,
                            verbose=True)
 
             best_params = res.X
+            print(f'Best parameters found: {best_params}')
+
             chaikin_osc = custom_ChaikinOscillator(
                 adl_arr,
                 fast_ma_type=best_params["fast_ma_type"],
@@ -170,7 +169,7 @@ def run_part(df_h: pd.DataFrame,
 def main(n_splits=2, max_iterations=MAX_ITERATIONS):
     df = pd.read_csv(ACTIONS_FULLPATH)
     ohlcv_np = df.to_numpy()[:, 1:6].astype(float)
-    print(f'All segments {int((df["Action"] != 0).sum())//2}')
+    print(f'All segments {int((df["Action"] != 0).sum()) // 2}')
     adl_arr = AD(*ohlcv_np[:, 1:5].T)
 
     if n_splits == 0:

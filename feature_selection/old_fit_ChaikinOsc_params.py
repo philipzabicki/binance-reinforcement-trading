@@ -10,10 +10,6 @@ import numpy as np
 import pandas as pd
 # from pymoo.algorithms.soo.nonconvex.ga import GA
 from pymoo.core.mixed import MixedVariableGA
-from pymoo.operators.mutation.pm import PolynomialMutation as PM
-from pymoo.operators.crossover.sbx import SBX
-from pymoo.operators.repair.rounding import RoundingRepair
-from pymoo.core.variable import Real, Integer
 # import matplotlib.pyplot as plt
 from pymoo.core.mixed import (
     MixedVariableMating,
@@ -21,6 +17,10 @@ from pymoo.core.mixed import (
     MixedVariableDuplicateElimination,
 )
 from pymoo.core.problem import StarmapParallelization
+from pymoo.core.variable import Real, Integer
+from pymoo.operators.crossover.sbx import SBX
+from pymoo.operators.mutation.pm import PolynomialMutation as PM
+from pymoo.operators.repair.rounding import RoundingRepair
 from pymoo.optimize import minimize
 from pymoo.termination.default import DefaultMultiObjectiveTermination
 from talib import AD
@@ -32,13 +32,12 @@ from utils.feature_generation import adl_initializer, custom_ChaikinOscillator
 # from utils.miscellaneous import convert_variables
 from utils.ta_tools import extract_segments_indices, ChaikinOscillator_signal
 
-
 PROBLEM = ChaikinOscillatorFitting
 ALGORITHM = MixedVariableGA
 TERMINATION = DefaultMultiObjectiveTermination(
     # cvtol=1e-8, # default 1e-8
-    xtol=0.00005, # default 0.0005
-    ftol=0.00001, # default 0.005
+    xtol=0.00005,  # default 0.0005
+    ftol=0.00001,  # default 0.005
     period=7,
     n_max_gen=100,
     n_max_evals=1_000_000
